@@ -52,6 +52,9 @@ struct nra_plugin_s {
   /** Map from constraint variables to the variables they are unit in */
   int_hmap_t constraint_unit_var;
 
+  /** Map from variables to constraints used for propagation */
+  int_hmap_t propagation_map;
+
   /** Next index of the trail to process */
   uint32_t trail_i;
 
@@ -88,6 +91,7 @@ struct nra_plugin_s {
     statistic_int_t* evaluations;
     statistic_int_t* constraint_regular;
     statistic_int_t* constraint_root;
+    statistic_int_t* variable_hints;
   } stats;
 
   /** Database of polynomial constraints */

@@ -67,6 +67,7 @@ void nra_plugin_stats_init(nra_plugin_t* nra) {
   nra->stats.evaluations = statistics_new_int(nra->ctx->stats, "mcsat::nra::evaluations");
   nra->stats.constraint_regular = statistics_new_int(nra->ctx->stats, "mcsat::nra::constraints_regular");
   nra->stats.constraint_root = statistics_new_int(nra->ctx->stats, "mcsat::nra::constraints_root");
+  nra->stats.variable_hints = statistics_new_int(nra->ctx->stats, "mcsat::nra::variable_hints");
 }
 
 static
@@ -88,6 +89,7 @@ void nra_plugin_construct(plugin_t* plugin, plugin_context_t* ctx) {
   watch_list_manager_construct(&nra->wlm, ctx->var_db);
   init_int_hmap(&nra->constraint_unit_info, 0);
   init_int_hmap(&nra->constraint_unit_var, 0);
+  init_int_hmap(&nra->propagation_map, 0);
 
   init_ivector(&nra->processed_variables, 0);
   nra->processed_variables_size = 0;
@@ -177,6 +179,7 @@ void nra_plugin_destruct(plugin_t* plugin) {
   watch_list_manager_destruct(&nra->wlm);
   delete_int_hmap(&nra->constraint_unit_info);
   delete_int_hmap(&nra->constraint_unit_var);
+  delete_int_hmap(&nra->propagation_map);
   delete_ivector(&nra->processed_variables);
   scope_holder_destruct(&nra->scope);
 
@@ -860,6 +863,7 @@ void nra_plugin_process_unit_constraint(nra_plugin_t* nra, trail_token_t* prop, 
         }
         lp_value_destruct(&v);
       }
+      // TODO add statistics
       if (!x_in_conflict && !trail_has_value(nra->ctx->trail, x)) {
         const lp_feasibility_set_t *feasible_set = feasible_set_db_get(nra->feasible_set_db, x);
         if (lp_feasibility_set_is_point(feasible_set)) {
@@ -867,16 +871,46 @@ void nra_plugin_process_unit_constraint(nra_plugin_t* nra, trail_token_t* prop, 
           lp_value_construct_none(&x_value);
           lp_feasibility_set_pick_value(feasible_set, &x_value);
           if (lp_value_is_rational(&x_value)) {
+            const lp_polynomial_t *polynomial = poly_constraint_get_polynomial(constraint);
+            assert(!poly_constraint_is_root_constraint(constraint));
             if (trail_is_at_base_level(nra->ctx->trail) && !nra->ctx->options->model_interpolation) {
+              if (ctx_trace_enabled(nra->ctx, "nra::propagate")) {
+                ctx_trace_printf(nra->ctx, "nra: propagating variable ");
+                variable_db_print_variable(nra->ctx->var_db, x, ctx_trace_out(nra->ctx));
+                ctx_trace_printf(nra->ctx, " to value ");
+                lp_value_print(&x_value, ctx_trace_out(nra->ctx));
+                ctx_trace_printf(nra->ctx, " at base level.\n");
+              }
               mcsat_value_t value;
               mcsat_value_construct_lp_value(&value, &x_value);
               prop->add_at_level(prop, x, &value, nra->ctx->trail->decision_level_base);
               mcsat_value_destruct(&value);
-            } else {
-              // TODO add statistics
+            } else if (poly_constraint_get_sign_condition(constraint) == LP_SGN_EQ_0
+                 && lp_polynomial_degree(polynomial) == 1
+                 && lp_polynomial_lc_is_constant(polynomial)) {
               if (ctx_trace_enabled(nra->ctx, "nra::propagate")) {
-                ctx_trace_printf(nra->ctx, "nra: hinting variable = %d\n", x);
+                ctx_trace_printf(nra->ctx, "nra: propagating variable ");
+                variable_db_print_variable(nra->ctx->var_db, x, ctx_trace_out(nra->ctx));
+                ctx_trace_printf(nra->ctx, " to value ");
+                lp_value_print(&x_value, ctx_trace_out(nra->ctx));
+                ctx_trace_printf(nra->ctx, " using constraint ");
+                poly_constraint_print(constraint, ctx_trace_out(nra->ctx));
+                ctx_trace_printf(nra->ctx, "\n");
               }
+              (*nra->stats.propagations) ++;
+              mcsat_value_t value;
+              mcsat_value_construct_lp_value(&value, &x_value);
+              prop->add(prop, x, &value);
+              mcsat_value_destruct(&value);
+              assert(int_hmap_find(&nra->propagation_map, x) == NULL);
+              int_hmap_add(&nra->propagation_map, x, constraint_var);
+            } else {
+              if (ctx_trace_enabled(nra->ctx, "nra::propagate")) {
+                ctx_trace_printf(nra->ctx, "nra: hinting variable ");
+                variable_db_print_variable(nra->ctx->var_db, x, ctx_trace_out(nra->ctx));
+                ctx_trace_printf(nra->ctx, "\n");
+              }
+              (*nra->stats.variable_hints) ++;
               nra->ctx->hint_next_decision(nra->ctx, x);
             }
           }
@@ -1772,11 +1806,37 @@ term_t nra_plugin_explain_propagation(plugin_t* plugin, variable_t var, ivector_
       return bool2term(false);
     }
   } else {
-    // we just return true => var = value
-    // this is only allowed at base level when explaining under assumptions
-    // there is currently no was to assert this properly
-    // assert(trail_is_at_base_level(nra->ctx->trail));
-    return mcsat_value_to_term(value, nra->ctx->tm);
+    int_hmap_pair_t *found = int_hmap_find(&nra->propagation_map, var);
+    if (found) {
+      // degree 1 propagation for L = c*x + d = 0 with constant c
+      // propagate to L => x = c/d
+      variable_t constraint_var = found->val;
+      const poly_constraint_t *constraint = poly_constraint_db_get(nra->constraint_db, constraint_var);
+      const lp_polynomial_t *polynomial = poly_constraint_get_polynomial(constraint);
+      assert(poly_constraint_get_sign_condition(constraint) == LP_SGN_EQ_0);
+      assert(lp_polynomial_degree(polynomial) == 1 && lp_polynomial_lc_is_constant(polynomial));
+
+      lp_polynomial_t *d_lp = lp_polynomial_new(lp_polynomial_get_context(polynomial));
+      lp_polynomial_get_coefficient(d_lp, polynomial, 0);
+      lp_polynomial_neg(d_lp, d_lp);
+
+      lp_integer_t c_lp;
+      lp_integer_construct(&c_lp);
+      lp_polynomial_lc_constant(polynomial, &c_lp);
+      assert(!lp_integer_is_zero(lp_Z, &c_lp));
+      term_t result = lp_polynomial_to_yices_term_nra(d_lp, &c_lp, nra);
+      lp_integer_destruct(&c_lp);
+      lp_polynomial_delete(d_lp);
+
+      ivector_push(reasons, constraint_var);
+      return result;
+    } else {
+      // we just return true => var = value
+      // this is only allowed at base level when explaining under assumptions
+      // there is currently no way to assert this properly
+      // assert(trail_is_at_base_level(nra->ctx->trail));
+      return mcsat_value_to_term(value, nra->ctx->tm);
+    }
   }
 }
 
@@ -1859,6 +1919,12 @@ void nra_plugin_pop(plugin_t* plugin) {
       remove_iterator_next_and_keep(&it);
     }
     remove_iterator_destruct(&it);
+
+    // remove from the propagation map, if exists
+    int_hmap_pair_t *found = int_hmap_find(&nra->propagation_map, x);
+    if (found) {
+      int_hmap_erase(&nra->propagation_map, found);
+    }
   }
 
   // Pop the variable order and the lp model
@@ -1932,6 +1998,7 @@ void nra_plugin_gc_sweep(plugin_t* plugin, const gc_info_t* gc_vars) {
   // Unit information (constraint_unit_info, constraint_unit_var)
   gc_info_sweep_int_hmap_keys(gc_vars, &nra->constraint_unit_info);
   gc_info_sweep_int_hmap_keys(gc_vars, &nra->constraint_unit_var);
+  gc_info_sweep_int_hmap_keys(gc_vars, &nra->propagation_map);
 
   // Watch list manager
   watch_list_manager_gc_sweep_lists(&nra->wlm, gc_vars);
