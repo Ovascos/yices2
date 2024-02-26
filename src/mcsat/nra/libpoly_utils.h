@@ -75,13 +75,15 @@ void rational_construct_from_lp_integer(rational_t* q, const lp_integer_t* lp_z)
 
 /**
  * Get yices term from polynomial (NRA plugin version).
+ * If lp_c != NULL, the yices polynomial is divided by lp_c.
  */
-term_t lp_polynomial_to_yices_term_nra(const lp_polynomial_t* lp_p, nra_plugin_t* nra);
+term_t lp_polynomial_to_yices_term_nra(const lp_polynomial_t* lp_p, const lp_integer_t* lp_c, nra_plugin_t *nra);
 
 /**
  * Get yices term from polynomial (direct version).
+ * If lp_c != NULL, the yices polynomial is divided by lp_c.
  */
-term_t lp_polynomial_to_yices_term(const lp_polynomial_t* lp_p, term_table_t* terms, rba_buffer_t* b, int_hmap_t* lp_to_term_map);
+term_t lp_polynomial_to_yices_term(const lp_polynomial_t* lp_p, const lp_integer_t* lp_c, term_table_t* terms, rba_buffer_t* b, int_hmap_t* lp_to_term_map);
 
 /**
  * Ensure value is an lp_value. If not the passed alternative will be constructed to an equivalent lp_value.

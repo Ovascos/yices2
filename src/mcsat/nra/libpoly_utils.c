@@ -449,7 +449,7 @@ void lp_polynomial_to_yices_traverse_f_nra(const lp_polynomial_context_t* ctx, l
   q_clear(&a);
 }
 
-term_t lp_polynomial_to_yices_term_nra( const lp_polynomial_t* lp_p, nra_plugin_t* nra) {
+term_t lp_polynomial_to_yices_term_nra(const lp_polynomial_t* lp_p, const lp_integer_t* lp_c, nra_plugin_t* nra) {
 
   term_table_t* terms = nra->ctx->terms;
 
@@ -468,6 +468,13 @@ term_t lp_polynomial_to_yices_term_nra( const lp_polynomial_t* lp_p, nra_plugin_
 
   // Traverse and build
   lp_polynomial_traverse(lp_p, lp_polynomial_to_yices_traverse_f_nra, &data);
+
+  if (lp_c) {
+    rational_t c;
+    rational_construct_from_lp_integer(&c, lp_c);
+    rba_buffer_div_const(data.b, &c);
+    q_clear(&c);
+  }
 
   // Make the term
   term_t result = mk_direct_arith_term(terms, data.b);
@@ -521,7 +528,7 @@ void lp_polynomial_to_yices_traverse_f(const lp_polynomial_context_t* ctx, lp_mo
   q_clear(&a);
 }
 
-term_t lp_polynomial_to_yices_term(const lp_polynomial_t* lp_p, term_table_t* terms, rba_buffer_t* b, int_hmap_t* lp_to_term_map) {
+term_t lp_polynomial_to_yices_term(const lp_polynomial_t* lp_p, const lp_integer_t* lp_c, term_table_t* terms, rba_buffer_t* b, int_hmap_t* lp_to_term_map) {
 
   // Buffer for building
   lp_polynomial_to_yices_term_data data;
@@ -532,6 +539,13 @@ term_t lp_polynomial_to_yices_term(const lp_polynomial_t* lp_p, term_table_t* te
 
   // Traverse and build
   lp_polynomial_traverse(lp_p, lp_polynomial_to_yices_traverse_f, &data);
+
+  if (lp_c) {
+    rational_t c;
+    rational_construct_from_lp_integer(&c, lp_c);
+    rba_buffer_div_const(data.b, &c);
+    q_clear(&c);
+  }
 
   // Make the term
   term_t result = mk_direct_arith_term(terms, data.b);

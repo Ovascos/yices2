@@ -195,9 +195,9 @@ void lp_projection_map_destruct(lp_projection_map_t* map) {
 static inline
 term_t lp_projection_map_polynomial_to_term(lp_projection_map_t* map, const lp_polynomial_t* p) {
   if (map->nra) {
-    return lp_polynomial_to_yices_term_nra(p, map->nra);
+    return lp_polynomial_to_yices_term_nra(p, NULL, map->nra);
   } else {
-    return lp_polynomial_to_yices_term(p, map->tm->terms, &map->buffer, map->lp_to_term_map);
+    return lp_polynomial_to_yices_term(p, NULL, map->tm->terms, &map->buffer, map->lp_to_term_map);
   }
 }
 

@@ -315,7 +315,7 @@ bool poly_constraint_resolve_fm(const poly_constraint_t* c0, bool c0_negated, co
     size_t i;
     for (i = 0; i < n; ++ i) {
       lp_polynomial_t* assumption_p_i = lp_polynomial_vector_at(assumptions, i);
-      term_t assumption_i_p_term = lp_polynomial_to_yices_term_nra(assumption_p_i, nra);
+      term_t assumption_i_p_term = lp_polynomial_to_yices_term_nra(assumption_p_i, NULL, nra);
       int assumption_i_p_sgn = lp_polynomial_sgn(assumption_p_i, m);
       //      term_t assumption_i = NULL_TERM; // infer dead store
       term_t assumption_i;
@@ -333,7 +333,7 @@ bool poly_constraint_resolve_fm(const poly_constraint_t* c0, bool c0_negated, co
       ivector_push(out, assumption_i);
       lp_polynomial_delete(assumption_p_i);
     }
-    term_t R_p_term = lp_polynomial_to_yices_term_nra(R, nra);
+    term_t R_p_term = lp_polynomial_to_yices_term_nra(R, NULL, nra);
     term_t R_term = NULL_TERM;
     switch (R_sgn_condition) {
     case LP_SGN_LT_0:
