@@ -76,8 +76,14 @@ struct nra_plugin_s {
   /** Variables processed in propagation */
   ivector_t processed_variables;
 
+  /** Variables propagated (but not necessarily processed) */
+  ivector_t propagated_variables;
+
   /** Size of processed (for backtracking) */
   uint32_t processed_variables_size;
+
+  /** Size of propagated (for backtracking) */
+  uint32_t propagated_variables_size;
 
   /** Scope holder for the int variables */
   scope_holder_t scope;
@@ -190,3 +196,7 @@ void nra_plugin_report_int_conflict(nra_plugin_t* nra, trail_token_t* prop, vari
 
 /** Report a conflict (variable is the with value not in feasible set) */
 void nra_plugin_report_assumption_conflict(nra_plugin_t* nra, trail_token_t* prop, variable_t variable, const mcsat_value_t* value);
+
+void nra_plugin_report_propagation(nra_plugin_t *nra, trail_token_t *prop, variable_t x, const mcsat_value_t *value, variable_t constraint_var);
+
+void nra_plugin_report_propagation_base_level(nra_plugin_t* nra, trail_token_t* prop, variable_t x, const mcsat_value_t* value);

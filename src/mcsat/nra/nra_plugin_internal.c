@@ -248,3 +248,17 @@ void nra_plugin_report_assumption_conflict(nra_plugin_t* nra, trail_token_t* pro
   lp_value_assign(&nra->conflict_variable_value, &value->lp_value);
   (*nra->stats.conflicts_assumption) ++;
 }
+
+void nra_plugin_report_propagation(nra_plugin_t *nra, trail_token_t *prop, variable_t x, const mcsat_value_t *value, variable_t constraint_var) {
+  assert(int_hmap_find(&nra->propagation_map, x) == NULL);
+  (*nra->stats.propagations) ++;
+  int_hmap_add(&nra->propagation_map, x, constraint_var);
+  ivector_push(&nra->propagated_variables, x);
+  nra->propagated_variables_size ++;
+  prop->add(prop, x, value);
+}
+
+void nra_plugin_report_propagation_base_level(nra_plugin_t* nra, trail_token_t* prop, variable_t x, const mcsat_value_t* value) {
+  (*nra->stats.propagations) ++;
+  prop->add_at_level(prop, x, value, nra->ctx->trail->decision_level_base);
+}

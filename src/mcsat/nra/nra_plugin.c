@@ -93,6 +93,8 @@ void nra_plugin_construct(plugin_t* plugin, plugin_context_t* ctx) {
 
   init_ivector(&nra->processed_variables, 0);
   nra->processed_variables_size = 0;
+  init_ivector(&nra->propagated_variables, 0);
+  nra->propagated_variables_size = 0;
 
   scope_holder_construct(&nra->scope);
 
@@ -181,6 +183,7 @@ void nra_plugin_destruct(plugin_t* plugin) {
   delete_int_hmap(&nra->constraint_unit_var);
   delete_int_hmap(&nra->propagation_map);
   delete_ivector(&nra->processed_variables);
+  delete_ivector(&nra->propagated_variables);
   scope_holder_destruct(&nra->scope);
 
   delete_int_hmap(&nra->lp_data.mcsat_to_lp_var_map);
@@ -872,7 +875,6 @@ void nra_plugin_process_unit_constraint(nra_plugin_t* nra, trail_token_t* prop, 
           lp_feasibility_set_pick_value(feasible_set, &x_value);
           if (lp_value_is_rational(&x_value)) {
             const lp_polynomial_t *polynomial = poly_constraint_get_polynomial(constraint);
-            assert(!poly_constraint_is_root_constraint(constraint));
             if (trail_is_at_base_level(nra->ctx->trail) && !nra->ctx->options->model_interpolation) {
               if (ctx_trace_enabled(nra->ctx, "nra::propagate")) {
                 ctx_trace_printf(nra->ctx, "nra: propagating variable ");
@@ -883,27 +885,29 @@ void nra_plugin_process_unit_constraint(nra_plugin_t* nra, trail_token_t* prop, 
               }
               mcsat_value_t value;
               mcsat_value_construct_lp_value(&value, &x_value);
-              prop->add_at_level(prop, x, &value, nra->ctx->trail->decision_level_base);
+              nra_plugin_report_propagation_base_level(nra, prop, x, &value);
               mcsat_value_destruct(&value);
             } else if (poly_constraint_get_sign_condition(constraint) == LP_SGN_EQ_0
                  && lp_polynomial_degree(polynomial) == 1
                  && lp_polynomial_lc_is_constant(polynomial)) {
-              if (ctx_trace_enabled(nra->ctx, "nra::propagate")) {
+
+              assert(int_hmap_find(&nra->lp_data.mcsat_to_lp_var_map, x) != NULL);
+              if (ctx_trace_enabled(nra->ctx, "nra::propagate::fup")) {
+                int_hmap_pair_t *tmp = int_hmap_find(&nra->lp_data.mcsat_to_lp_var_map, x);
                 ctx_trace_printf(nra->ctx, "nra: propagating variable ");
                 variable_db_print_variable(nra->ctx->var_db, x, ctx_trace_out(nra->ctx));
+                ctx_trace_printf(nra->ctx, " [lp_var %s]", lp_variable_db_get_name(nra->lp_data.lp_var_db, tmp->val));
                 ctx_trace_printf(nra->ctx, " to value ");
                 lp_value_print(&x_value, ctx_trace_out(nra->ctx));
                 ctx_trace_printf(nra->ctx, " using constraint ");
                 poly_constraint_print(constraint, ctx_trace_out(nra->ctx));
                 ctx_trace_printf(nra->ctx, "\n");
               }
-              (*nra->stats.propagations) ++;
+              assert(!poly_constraint_is_root_constraint(constraint));
               mcsat_value_t value;
               mcsat_value_construct_lp_value(&value, &x_value);
-              prop->add(prop, x, &value);
+              nra_plugin_report_propagation(nra, prop, x, &value, constraint_var);
               mcsat_value_destruct(&value);
-              assert(int_hmap_find(&nra->propagation_map, x) == NULL);
-              int_hmap_add(&nra->propagation_map, x, constraint_var);
             } else {
               if (ctx_trace_enabled(nra->ctx, "nra::propagate")) {
                 ctx_trace_printf(nra->ctx, "nra: hinting variable ");
@@ -1784,12 +1788,12 @@ term_t nra_plugin_explain_propagation(plugin_t* plugin, variable_t var, ivector_
   // We only propagate evaluations, and we explain them using the literal itself
   // The only other propagations are at 0-level, and those we explain with the value and no reasons
   term_t atom = variable_db_get_term(nra->ctx->var_db, var);
-  if (ctx_trace_enabled(nra->ctx, "nra::conflict")) {
+  if (ctx_trace_enabled(nra->ctx, "nra::propagate::fup")) {
     ctx_trace_printf(nra->ctx, "nra_plugin_explain_propagation():\n");
     ctx_trace_term(nra->ctx, atom);
   }
   const mcsat_value_t* value = trail_get_value(nra->ctx->trail, var);
-  if (ctx_trace_enabled(nra->ctx, "nra::conflict")) {
+  if (ctx_trace_enabled(nra->ctx, "nra::propagate::fup")) {
     ctx_trace_printf(nra->ctx, "assigned to:");
     mcsat_value_print(value, ctx_trace_out(nra->ctx));
     ctx_trace_printf(nra->ctx, "\n");
@@ -1811,10 +1815,24 @@ term_t nra_plugin_explain_propagation(plugin_t* plugin, variable_t var, ivector_
       // degree 1 propagation for L = c*x + d = 0 with constant c
       // propagate to L => x = c/d
       variable_t constraint_var = found->val;
+      term_t constraint_atom = variable_db_get_term(nra->ctx->var_db, constraint_var);
       const poly_constraint_t *constraint = poly_constraint_db_get(nra->constraint_db, constraint_var);
+      assert(trail_has_value(nra->ctx->trail, constraint_var));
+      assert(trail_get_boolean_value(nra->ctx->trail, constraint_var) == true);
       const lp_polynomial_t *polynomial = poly_constraint_get_polynomial(constraint);
       assert(poly_constraint_get_sign_condition(constraint) == LP_SGN_EQ_0);
       assert(lp_polynomial_degree(polynomial) == 1 && lp_polynomial_lc_is_constant(polynomial));
+
+      if (ctx_trace_enabled(nra->ctx, "nra::propagate::fup")) {
+        ctx_trace_printf(nra->ctx, "explain propagation of variable ");
+        variable_db_print_variable(nra->ctx->var_db, var, ctx_trace_out(nra->ctx));
+        ctx_trace_printf(nra->ctx, " with constraint ");
+        poly_constraint_print(constraint, ctx_trace_out(nra->ctx));
+        ctx_trace_printf(nra->ctx, "\n");
+        ctx_trace_printf(nra->ctx, "constraint: ");
+        variable_db_print_variable(nra->ctx->var_db, constraint_var, ctx_trace_out(nra->ctx));
+        ctx_trace_printf(nra->ctx, "\n");
+      }
 
       lp_polynomial_t *d_lp = lp_polynomial_new(lp_polynomial_get_context(polynomial));
       lp_polynomial_get_coefficient(d_lp, polynomial, 0);
@@ -1828,13 +1846,19 @@ term_t nra_plugin_explain_propagation(plugin_t* plugin, variable_t var, ivector_
       lp_integer_destruct(&c_lp);
       lp_polynomial_delete(d_lp);
 
-      ivector_push(reasons, constraint_var);
+      if (ctx_trace_enabled(nra->ctx, "nra::propagate::fup")) {
+        ctx_trace_printf(nra->ctx, "With term ");
+        term_print_to_file(ctx_trace_out(nra->ctx), nra->ctx->terms, result);
+        ctx_trace_printf(nra->ctx, "\n");
+      }
+
+      ivector_push(reasons, constraint_atom);
       return result;
     } else {
       // we just return true => var = value
       // this is only allowed at base level when explaining under assumptions
       // there is currently no way to assert this properly
-      // assert(trail_is_at_base_level(nra->ctx->trail));
+      assert(trail_is_at_base_level(nra->ctx->trail));
       return mcsat_value_to_term(value, nra->ctx->tm);
     }
   }
@@ -1868,6 +1892,7 @@ void nra_plugin_push(plugin_t* plugin) {
   scope_holder_push(&nra->scope,
       &nra->trail_i,
       &nra->processed_variables_size,
+      &nra->propagated_variables_size,
       &nra->lp_data.lp_var_order_size,
       NULL);
 
@@ -1888,6 +1913,7 @@ void nra_plugin_pop(plugin_t* plugin) {
   scope_holder_pop(&nra->scope,
       &nra->trail_i,
       &nra->processed_variables_size,
+      &nra->propagated_variables_size,
       &nra->lp_data.lp_var_order_size,
       NULL);
 
@@ -1919,11 +1945,22 @@ void nra_plugin_pop(plugin_t* plugin) {
       remove_iterator_next_and_keep(&it);
     }
     remove_iterator_destruct(&it);
+  }
 
-    // remove from the propagation map, if exists
+  // Pop the propagation map
+  while (nra->propagated_variables.size > nra->propagated_variables_size) {
+    variable_t x = ivector_last(&nra->propagated_variables);
+    ivector_pop(&nra->propagated_variables);
+
+    // remove from the propagation map
     int_hmap_pair_t *found = int_hmap_find(&nra->propagation_map, x);
-    if (found) {
-      int_hmap_erase(&nra->propagation_map, found);
+    assert(found);
+    int_hmap_erase(&nra->propagation_map, found);
+
+    if (ctx_trace_enabled(nra->ctx, "nra::propagate::fup")) {
+      fprintf(ctx_trace_out(nra->ctx), "nra pop propagation of variable ");
+      variable_db_print_variable(nra->ctx->var_db, x, ctx_trace_out(nra->ctx));
+      fprintf(ctx_trace_out(nra->ctx), "\n");
     }
   }
 
@@ -1963,6 +2000,8 @@ void nra_plugin_gc_mark(plugin_t* plugin, gc_info_t* gc_vars) {
   feasible_set_db_gc_mark(nra->feasible_set_db, gc_vars);
   // We also need to mark all the real variables that are in use
   watch_list_manager_gc_mark(&nra->wlm, gc_vars);
+
+  // TODO should we mark constraints that are used for propagation, i.e. values in propagation_map
 }
 
 static
@@ -1998,7 +2037,10 @@ void nra_plugin_gc_sweep(plugin_t* plugin, const gc_info_t* gc_vars) {
   // Unit information (constraint_unit_info, constraint_unit_var)
   gc_info_sweep_int_hmap_keys(gc_vars, &nra->constraint_unit_info);
   gc_info_sweep_int_hmap_keys(gc_vars, &nra->constraint_unit_var);
-  gc_info_sweep_int_hmap_keys(gc_vars, &nra->propagation_map);
+
+  // propagation
+  // TODO contains just variables that are on the trail, those should not be collected
+  // gc_info_sweep_int_hmap_keys(gc_vars, &nra->propagation_map);
 
   // Watch list manager
   watch_list_manager_gc_sweep_lists(&nra->wlm, gc_vars);
