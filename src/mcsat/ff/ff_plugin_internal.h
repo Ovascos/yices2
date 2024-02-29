@@ -69,17 +69,22 @@ struct ff_plugin_s {
 
   /** The value that got the assumptions variable in trouble */
   lp_value_t conflict_variable_value;
-
-  /** Bound variable term */
-  term_t global_bound_term;
-
 #endif
+
+  /** Map from variables to constraints used for propagation */
+  int_hmap_t propagation_map;
 
   /** Variables processed in propagation */
   ivector_t processed_variables;
 
+  /** Variables propagated (but not necessarily processed) */
+  ivector_t propagated_variables;
+
   /** Size of processed (for backtracking) */
   uint32_t processed_variables_size;
+
+  /** Size of propagated (for backtracking) */
+  uint32_t propagated_variables_size;
 
   /** Scope holder for the int variables */
   scope_holder_t scope;

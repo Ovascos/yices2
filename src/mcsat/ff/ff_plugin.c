@@ -46,6 +46,7 @@
 #include <poly/feasibility_set_int.h>
 #include <poly/upolynomial.h>
 #include <poly/upolynomial_factors.h>
+#include <poly/variable_db.h>
 
 static
 void ff_plugin_stats_init(ff_plugin_t* ff) {
@@ -75,8 +76,12 @@ void ff_plugin_construct(plugin_t* plugin, plugin_context_t* ctx) {
 
   watch_list_manager_construct(&ff->wlm, ctx->var_db);
 
+  init_int_hmap(&ff->propagation_map, 0);
+
   init_ivector(&ff->processed_variables, 0);
+  init_ivector(&ff->propagated_variables, 0);
   ff->processed_variables_size = 0;
+  ff->propagated_variables_size = 0;
 
   scope_holder_construct(&ff->scope);
 
@@ -121,6 +126,8 @@ void ff_plugin_destruct(plugin_t* plugin) {
   }
 
   delete_ivector(&ff->processed_variables);
+  delete_ivector(&ff->propagated_variables);
+  delete_int_hmap(&ff->propagation_map);
   watch_list_manager_destruct(&ff->wlm);
   scope_holder_destruct(&ff->scope);
   delete_rba_buffer(&ff->buffer);
@@ -141,6 +148,23 @@ void ff_plugin_report_conflict(ff_plugin_t* ff, trail_token_t* prop, variable_t 
   prop->conflict(prop);
   ff->conflict_variable = variable;
   (*ff->stats.conflicts) ++;
+}
+
+static inline
+void ff_plugin_report_propagation(ff_plugin_t *ff, trail_token_t *prop, variable_t x, const mcsat_value_t *value, variable_t constraint_var) {
+  assert(int_hmap_find(&ff->propagation_map, x) == NULL);
+  (*ff->stats.propagations) ++;
+  // TODO maybe use term instead of variable as value in propagation_map
+  int_hmap_add(&ff->propagation_map, x, constraint_var);
+  ivector_push(&ff->propagated_variables, x);
+  ff->propagated_variables_size ++;
+  prop->add(prop, x, value);
+}
+
+static inline
+void ff_plugin_report_propagation_base_level(ff_plugin_t* ff, trail_token_t* prop, variable_t x, const mcsat_value_t* value) {
+  (*ff->stats.propagations) ++;
+  prop->add_at_level(prop, x, value, ff->ctx->trail->decision_level_base);
 }
 
 static
@@ -460,6 +484,7 @@ void ff_plugin_process_unit_constraint(ff_plugin_t* ff, trail_token_t* prop, var
   if (is_eval_constraint || trail_has_value(ff->ctx->trail, constraint_var)) {
     // Get the constraint value
     bool constraint_value = is_eval_constraint || trail_get_value(ff->ctx->trail, constraint_var)->b;
+    const poly_constraint_t* constraint = poly_constraint_db_get(ff->constraint_db, constraint_var);
 
     // Variable of the constraint
     variable_t x = constraint_unit_info_get_unit_var(&ff->unit_info, constraint_var);
@@ -488,27 +513,50 @@ void ff_plugin_process_unit_constraint(ff_plugin_t* ff, trail_token_t* prop, var
       const lp_feasibility_set_int_t *feasible = ff_feasible_set_db_get(ff->feasible_set_db, x);
       if (lp_feasibility_set_int_is_point(feasible)) {
         // If the value is implied at zero level, propagate it
-        // TODO why not always propagate it?
+        // Why not always propagate it?
         // because generating an explanation is not doable in case there is a a_2*x^2 +a_1*x + a_0 = 0
-        // you need to find a term s that evaluates to the propagated value under the current assignment, but works in general
-        // and you need to find an explanaiton for this propagation
-        // TODO this can be done in ff -> propagation like single polynomial propagation
+        // you need to find a term s that evaluates to the propagated value under the current assignment, but works in general,
+        // and you need to find an explanation for this propagation
         if (!trail_has_value(ff->ctx->trail, x)) {
-          if (trail_is_at_base_level(ff->ctx->trail)) {
-            mcsat_value_t value;
-            lp_value_t x_value;
-            lp_value_construct_zero(&x_value);
-            assert(x_value.type == LP_VALUE_INTEGER);
+        const lp_polynomial_t *polynomial = poly_constraint_get_polynomial(constraint);
+        lp_value_t x_value;
+        lp_value_construct_zero(&x_value);
+        assert(x_value.type == LP_VALUE_INTEGER);
             lp_feasibility_set_int_pick_value(feasible, &x_value.value.z);
+          if (trail_is_at_base_level(ff->ctx->trail)) {
+          mcsat_value_t value;
+          mcsat_value_construct_lp_value(&value, &x_value);
+          ff_plugin_report_propagation_base_level(ff, prop, x, &value);
+          mcsat_value_destruct(&value);
+        } else if (trail_get_boolean_value(ff->ctx->trail, constraint_var) == true
+                   && poly_constraint_get_sign_condition(constraint) == LP_SGN_EQ_0
+                   && lp_polynomial_degree(polynomial) == 1
+                   && lp_polynomial_lc_is_constant(polynomial)) {
+          // TODO check any constraint from ff_feasible_set reasons (one is enough to propagate, it's not required to be the current)
+
+          term_t x_term = variable_db_get_term(ff->ctx->var_db, x);
+          assert(int_hmap_find(&ff->lp_data->term_to_lp_var_map, x_term) != NULL);
+          if (ctx_trace_enabled(ff->ctx, "ff::propagate::fup")) {
+            int_hmap_pair_t *tmp = int_hmap_find(&ff->lp_data->term_to_lp_var_map, x_term);
+            ctx_trace_printf(ff->ctx, "ff: propagating variable ");
+            variable_db_print_variable(ff->ctx->var_db, x, ctx_trace_out(ff->ctx));
+            ctx_trace_printf(ff->ctx, " [lp_var %s]", lp_variable_db_get_name(ff->lp_data->lp_var_db, tmp->val));
+            ctx_trace_printf(ff->ctx, " to value ");
+            lp_value_print(&x_value, ctx_trace_out(ff->ctx));
+            ctx_trace_printf(ff->ctx, " using constraint ");
+            poly_constraint_print(constraint, ctx_trace_out(ff->ctx));
+            ctx_trace_printf(ff->ctx, "\n");
+          }
+          mcsat_value_t value;
             mcsat_value_construct_lp_value(&value, &x_value);
-            prop->add_at_level(prop, x, &value, ff->ctx->trail->decision_level_base);
-            mcsat_value_destruct(&value);
-            lp_value_destruct(&x_value);
+          ff_plugin_report_propagation(ff, prop, x, &value, constraint_var);
+          mcsat_value_destruct(&value);
           } else {
             (*ff->stats.variable_hints) ++;
             ff->ctx->hint_next_decision(ff->ctx, x);
           }
         }
+        lp_value_destruct(&x_value);
       }
     }
   }
@@ -907,11 +955,65 @@ term_t ff_plugin_explain_propagation(plugin_t* plugin, variable_t var, ivector_t
       return bool2term(false);
     }
   } else {
-    // we just return true => var = value
-    // this is only allowed at base level when explaining under assumptions
-    // there is currently no was to assert this properly
-    // assert(trail_is_at_base_level(ff->ctx->trail));
-    return mcsat_value_to_term(value, ff->ctx->tm);
+    int_hmap_pair_t *found = int_hmap_find(&ff->propagation_map, var);
+    if (found) {
+      variable_t constraint_var = found->val;
+      const poly_constraint_t *constraint = poly_constraint_db_get(ff->constraint_db, constraint_var);
+      assert(trail_has_value(ff->ctx->trail, constraint_var));
+      assert(trail_get_boolean_value(ff->ctx->trail, constraint_var) == true);
+      const lp_polynomial_t *polynomial = poly_constraint_get_polynomial(constraint);
+      assert(lp_polynomial_degree(polynomial) == 1 && lp_polynomial_lc_is_constant(polynomial));
+
+      if (ctx_trace_enabled(ff->ctx, "ff::propagate::fup")) {
+        ctx_trace_printf(ff->ctx, "explain propagation of variable ");
+        variable_db_print_variable(ff->ctx->var_db, var, ctx_trace_out(ff->ctx));
+        ctx_trace_printf(ff->ctx, " with constraint ");
+        poly_constraint_print(constraint, ctx_trace_out(ff->ctx));
+        ctx_trace_printf(ff->ctx, "\n");
+        ctx_trace_printf(ff->ctx, "constraint: ");
+        variable_db_print_variable(ff->ctx->var_db, constraint_var, ctx_trace_out(ff->ctx));
+        ctx_trace_printf(ff->ctx, "\n");
+      }
+
+      lp_polynomial_t *d_lp = lp_polynomial_new(lp_polynomial_get_context(polynomial));
+      lp_polynomial_get_coefficient(d_lp, polynomial, 0);
+      lp_polynomial_neg(d_lp, d_lp);
+
+      lp_integer_t c_lp;
+      lp_integer_construct(&c_lp);
+      lp_polynomial_lc_constant(polynomial, &c_lp);
+      assert(!lp_integer_is_zero(lp_Z, &c_lp));
+      lp_integer_inv(ff->lp_data->lp_ctx->K, &c_lp, &c_lp);
+      lp_polynomial_mul_integer(d_lp, d_lp, &c_lp);
+      term_t result = lp_polynomial_to_yices_term_ff(ff, d_lp);
+      lp_integer_destruct(&c_lp);
+      lp_polynomial_delete(d_lp);
+
+      if (ctx_trace_enabled(ff->ctx, "ff::propagate::fup")) {
+        ctx_trace_printf(ff->ctx, "With term ");
+        term_print_to_file(ctx_trace_out(ff->ctx), ff->ctx->terms, result);
+        ctx_trace_printf(ff->ctx, "\n");
+      }
+
+      ivector_t reasons_vars;
+      init_ivector(&reasons_vars, 0);
+      ff_feasible_set_db_get_reasons(ff->feasible_set_db, var, &reasons_vars);
+      for (int i = 0; i < reasons_vars.size; ++i) {
+        variable_t reason_var = reasons_vars.data[i];
+        term_t reason_atom = variable_db_get_term(ff->ctx->var_db, reason_var);
+        assert(trail_has_value(ff->ctx->trail, reason_var));
+        ivector_push(reasons, trail_get_boolean_value(ff->ctx->trail, reason_var) ? reason_atom : opposite_term(reason_atom));
+        // term_print_to_file(stderr, ff->ctx->terms, ivector_last(reasons)); fprintf(stderr, "\n");
+      }
+      delete_ivector(&reasons_vars);
+      return result;
+    } else {
+      // we just return true => var = value
+      // this is only allowed at base level when explaining under assumptions
+      // there is currently no way to assert this properly
+      assert(trail_is_at_base_level(ff->ctx->trail));
+      return mcsat_value_to_term(value, ff->ctx->tm);
+    }
   }
 }
 
@@ -955,6 +1057,7 @@ void ff_plugin_push(plugin_t* plugin) {
   scope_holder_push(&ff->scope,
                     &ff->trail_i,
                     &ff->processed_variables_size,
+                    &ff->propagated_variables_size,
                     NULL);
 
   lp_data_variable_order_push(ff->lp_data);
@@ -975,6 +1078,7 @@ void ff_plugin_pop(plugin_t* plugin) {
   scope_holder_pop(&ff->scope,
                    &ff->trail_i,
                    &ff->processed_variables_size,
+                   &ff->propagated_variables_size,
                    NULL);
 
   // Pop the variable order and the lp model
@@ -997,6 +1101,23 @@ void ff_plugin_pop(plugin_t* plugin) {
     remove_iterator_destruct(&it);
   }
 
+  // Pop the propagation map
+  while (ff->propagated_variables.size > ff->propagated_variables_size) {
+    variable_t x = ivector_last(&ff->propagated_variables);
+    ivector_pop(&ff->propagated_variables);
+
+    // remove from the propagation map
+    int_hmap_pair_t *found = int_hmap_find(&ff->propagation_map, x);
+    assert(found);
+    int_hmap_erase(&ff->propagation_map, found);
+
+    if (ctx_trace_enabled(ff->ctx, "ff::propagate::fup")) {
+      fprintf(ctx_trace_out(ff->ctx), "ff pop propagation of variable ");
+      variable_db_print_variable(ff->ctx->var_db, x, ctx_trace_out(ff->ctx));
+      fprintf(ctx_trace_out(ff->ctx), "\n");
+    }
+  }
+
   ff_feasible_set_db_pop(ff->feasible_set_db);
 
   assert(ff_plugin_check_assignment(ff));
@@ -1012,6 +1133,7 @@ void ff_plugin_gc_mark(plugin_t* plugin, gc_info_t* gc_vars) {
   }
 
   watch_list_manager_gc_mark(&ff->wlm, gc_vars);
+  // TODO mark the keys in propagation_map
 }
 
 static
@@ -1026,6 +1148,7 @@ void ff_plugin_gc_sweep(plugin_t* plugin, const gc_info_t* gc_vars) {
     assert(ff->constraint_db);
     poly_constraint_db_gc_sweep(ff->constraint_db, ff->ctx, gc_vars);
   }
+  // TODO sweep propagation map keys
 }
 
 static
