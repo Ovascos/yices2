@@ -25,6 +25,20 @@
 
 #include "mcsat/tracing.h"
 
+/**
+ * Database of constraints
+ */
+struct poly_constraint_db_s {
+  /** Vector of constraints */
+  pvector_t constraints;
+
+  /** Map from variables to constraint references */
+  int_hmap_t var_to_constraint_map;
+
+  /** List of all constraint variables */
+  ivector_t all_constraint_variables;
+};
+
 #ifndef NDEBUG
 static
 bool poly_constraint_ok(const poly_constraint_t* cstr) {
@@ -54,18 +68,16 @@ bool poly_constraint_db_check(const poly_constraint_db_t* db) {
 }
 #endif
 
-void poly_constraint_db_construct(poly_constraint_db_t* db, lp_data_t* lp_data) {
-  db->lp_data = lp_data;
-
+void poly_constraint_db_construct(poly_constraint_db_t *db) {
   init_pvector(&db->constraints, 0);
   init_int_hmap(&db->var_to_constraint_map, 0);
   init_ivector(&db->all_constraint_variables, 0);
 }
 
-poly_constraint_db_t* poly_constraint_db_new(lp_data_t* lp_data) {
+poly_constraint_db_t *poly_constraint_db_new() {
   poly_constraint_db_t* db;
   db = safe_malloc(sizeof(poly_constraint_db_t));
-  poly_constraint_db_construct(db, lp_data);
+  poly_constraint_db_construct(db);
   return db;
 }
 
@@ -359,4 +371,8 @@ void poly_constraint_db_gc_sweep(poly_constraint_db_t* db, plugin_context_t* ctx
   db->constraints = new_constraints;
   db->var_to_constraint_map = new_var_to_constraint_map;
   ivector_shrink(&db->all_constraint_variables, to_keep);
+}
+
+const ivector_t* poly_constraint_db_get_constraints(const poly_constraint_db_t* db) {
+  return &db->all_constraint_variables;
 }

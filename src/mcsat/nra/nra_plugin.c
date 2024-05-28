@@ -105,7 +105,7 @@ void nra_plugin_construct(plugin_t* plugin, plugin_context_t* ctx) {
   init_ptr_hmap(&nra->feasible_set_cache[1], 0);
 
   // Constraint db
-  nra->constraint_db = poly_constraint_db_new(&nra->lp_data);
+  nra->constraint_db = poly_constraint_db_new();
 
   // Feasible sets
   nra->feasible_set_db = feasible_set_db_new(nra);

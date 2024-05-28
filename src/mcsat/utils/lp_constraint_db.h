@@ -48,25 +48,13 @@ typedef struct {
 /**
  * Database of constraints
  */
-typedef struct {
-  /** The lp_data context */
-  lp_data_t *lp_data;
-
-  /** Vector of constraints */
-  pvector_t constraints;
-
-  /** Map from variables to constraint references */
-  int_hmap_t var_to_constraint_map;
-
-  /** List of all constraint variables */
-  ivector_t all_constraint_variables;
-} poly_constraint_db_t;
+typedef struct poly_constraint_db_s poly_constraint_db_t;
 
 /** Construct the database */
-void poly_constraint_db_construct(poly_constraint_db_t* db, lp_data_t* lp_data);
+void poly_constraint_db_construct(poly_constraint_db_t *db);
 
 /** Construct the database */
-poly_constraint_db_t* poly_constraint_db_new(lp_data_t* lp_data);
+poly_constraint_db_t *poly_constraint_db_new();
 
 /** Destruct the database */
 void poly_constraint_db_destruct(poly_constraint_db_t* db);
@@ -141,10 +129,7 @@ bool poly_constraint_is_unit(const poly_constraint_t* cstr, const lp_assignment_
 lp_variable_t poly_constraint_get_top_variable(const poly_constraint_t* cstr);
 
 /** Get all constraints (as variables) */
-static inline
-const ivector_t* poly_constraint_db_get_constraints(const poly_constraint_db_t* db) {
-  return &db->all_constraint_variables;
-}
+const ivector_t* poly_constraint_db_get_constraints(const poly_constraint_db_t* db);
 
 /** Returns true when the constraint_var has an associated polynomial in the db */
 bool poly_constraint_db_has(poly_constraint_db_t* db, variable_t constraint_var);

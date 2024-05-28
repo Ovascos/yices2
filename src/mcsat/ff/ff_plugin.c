@@ -270,7 +270,7 @@ void ff_plugin_set_lp_data(ff_plugin_t *ff, term_t t) {
     }
   } else {
     ff->lp_data = lp_data_new(order, ff->ctx);
-    ff->constraint_db = poly_constraint_db_new(ff->lp_data);
+    ff->constraint_db = poly_constraint_db_new();
     ff->feasible_set_db = ff_feasible_set_db_new(ff);
   }
   mpz_clear(order);
