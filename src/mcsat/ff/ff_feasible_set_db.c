@@ -261,6 +261,8 @@ bool ff_feasible_set_db_update(ff_feasible_set_db_t* db, variable_t x, lp_feasib
     switch (status) {
     case LP_FEASIBILITY_SET_INT_S1:
       // old set stays
+      lp_feasibility_set_int_delete(new_set);
+      lp_feasibility_set_int_delete(intersect);
       return true;
     case LP_FEASIBILITY_SET_INT_S2:
     case LP_FEASIBILITY_SET_INT_NEW:

@@ -502,7 +502,6 @@ void ff_plugin_process_unit_constraint(ff_plugin_t* ff, trail_token_t* prop, var
         }
       }
     }
-    lp_feasibility_set_int_delete(constraint_feasible);
   }
 }
 
