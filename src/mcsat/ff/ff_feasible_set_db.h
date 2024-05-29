@@ -45,6 +45,9 @@ lp_feasibility_set_int_t* ff_feasible_set_db_get(ff_feasible_set_db_t* db, varia
  */
 bool ff_feasible_set_db_update(ff_feasible_set_db_t* db, variable_t x, lp_feasibility_set_int_t* new_set, const variable_t* reasons, size_t reasons_count);
 
+/** Get all reasons for the variable x. */
+void ff_feasible_set_db_get_reasons(const ff_feasible_set_db_t* db, variable_t x, ivector_t* reasons_out);
+
 /** Get the reason for a conflict on x. Feasible set of x should be empty. */
 void ff_feasible_set_db_get_conflict_reasons(const ff_feasible_set_db_t* db, variable_t x, ivector_t* reasons_out, ivector_t* lemma_reasons);
 

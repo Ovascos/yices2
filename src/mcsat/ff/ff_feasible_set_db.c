@@ -523,7 +523,6 @@ void ff_feasible_set_get_conflict_reason_indices(const ff_feasible_set_db_t* db,
   uint32_t reason_index = feasible_set_db_get_index(db, x);
   assert(reason_index);
   while (reason_index) {
-    assert(reason_index);
     ivector_push(reasons_indices, reason_index);
     reason_index = db->memory[reason_index].prev;
   }
@@ -563,6 +562,21 @@ void ff_feasible_set_db_get_conflict_reasons(const ff_feasible_set_db_t* db, var
   }
 
   delete_ivector(&reasons_indices);
+}
+
+void ff_feasible_set_db_get_reasons(const ff_feasible_set_db_t* db, variable_t x, ivector_t* reasons_out) {
+  uint32_t reason_index = feasible_set_db_get_index(db, x);
+  assert(reason_index);
+
+  ivector_reset(reasons_out);
+  while (reason_index) {
+    const feasibility_list_element_t *curr = &db->memory[reason_index];
+    assert(curr->reasons_size == 1);
+    ivector_push(reasons_out, curr->reasons[0]);
+    reason_index = curr->prev;
+  }
+
+  ivector_remove_duplicates(reasons_out);
 }
 
 void ff_feasible_set_db_gc_mark(ff_feasible_set_db_t* db, gc_info_t* gc_vars) {

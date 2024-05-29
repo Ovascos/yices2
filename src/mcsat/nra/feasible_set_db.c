@@ -368,7 +368,6 @@ void feasible_set_get_conflict_reason_indices(const feasible_set_db_t* db, varia
   uint32_t reason_index = feasible_set_db_get_index(db, x);
   assert(reason_index);
   while (reason_index) {
-    assert(reason_index);
     ivector_push(reasons_indices, reason_index);
     reason_index = db->memory[reason_index].prev;
   }
