@@ -332,7 +332,7 @@ const poly_constraint_t* poly_constraint_db_get(poly_constraint_db_t* db, variab
   return constraint;
 }
 
-void poly_constraint_db_gc_sweep(poly_constraint_db_t* db, plugin_context_t* ctx, const gc_info_t* gc_vars) {
+void poly_constraint_db_gc_sweep(poly_constraint_db_t* db, const gc_info_t* gc_vars) {
 
   pvector_t new_constraints;
   int_hmap_t new_var_to_constraint_map;
@@ -355,11 +355,13 @@ void poly_constraint_db_gc_sweep(poly_constraint_db_t* db, plugin_context_t* ctx
       int_hmap_add(&new_var_to_constraint_map, new_constraint_var, new_index);
       db->all_constraint_variables.data[to_keep ++] = new_constraint_var;
     } else {
+#if 0
       if (ctx_trace_enabled(ctx, "lp::gc")) {
         ctx_trace_printf(ctx, "Removing constraint :");
         poly_constraint_print(constraint, ctx_trace_out(ctx));
         ctx_trace_printf(ctx, "\n");
       }
+#endif
       // Delete it
       poly_constraint_delete(constraint);
     }

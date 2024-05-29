@@ -95,10 +95,7 @@ void ff_plugin_construct(plugin_t* plugin, plugin_context_t* ctx) {
   ctx->request_term_notification_by_type(ctx, FF_TYPE);
   ctx->request_decision_calls(ctx, FF_TYPE);
 
-  // Constraint db and libpoly are set once the field size is known
-  ff->constraint_db = NULL;
-  ff->lp_data = NULL;
-  ff->feasible_set_db = NULL;
+  ff_plugin_lp_data_init(ff);
 
   init_rba_buffer(&ff->buffer, ctx->terms->pprods);
 
@@ -111,14 +108,7 @@ void ff_plugin_destruct(plugin_t* plugin) {
   ff_plugin_t* ff = (ff_plugin_t*) plugin;
 
   constraint_unit_info_destruct(&ff->unit_info);
-
-  if (ff->lp_data) {
-    lp_data_destruct(ff->lp_data);
-    assert(ff->constraint_db);
-    poly_constraint_db_delete(ff->constraint_db);
-    assert(ff->feasible_set_db);
-    ff_feasible_set_db_delete(ff->feasible_set_db);
-  }
+  ff_plugin_lp_data_delete(ff);
 
   delete_ivector(&ff->processed_variables);
   watch_list_manager_destruct(&ff->wlm);
@@ -146,11 +136,13 @@ void ff_plugin_report_conflict(ff_plugin_t* ff, trail_token_t* prop, variable_t 
 static
 const mcsat_value_t* ff_plugin_constraint_evaluate(ff_plugin_t* ff, variable_t cstr_var, uint32_t* cstr_level) {
 
-  assert(ff->lp_data && ff->constraint_db && ff->feasible_set_db);
   assert(!trail_has_value(ff->ctx->trail, cstr_var));
 
+  // TODO this should not work
+  ff_plugin_field_t* f = ff_plugin_get_lp_data_by_var(ff, cstr_var);
+
   // Check if it is a valid constraints
-  const poly_constraint_t* cstr = poly_constraint_db_get(ff->constraint_db, cstr_var);
+  const poly_constraint_t* cstr = poly_constraint_db_get(f->constraint_db, cstr_var);
   if (!poly_constraint_is_valid(cstr)) {
     return NULL;
   }
@@ -204,7 +196,7 @@ const mcsat_value_t* ff_plugin_constraint_evaluate(ff_plugin_t* ff, variable_t c
   // do not evaluate (see ok below, but we can evaluate them in the cache)
 
   // Compute the evaluation
-  bool ok = poly_constraint_evaluate(cstr, ff->lp_data, &cstr_value);
+  bool ok = poly_constraint_evaluate(cstr, f->lp_data, &cstr_value);
   (void) ok;
   assert(ok);
   (*ff->stats.evaluations) ++;
@@ -252,35 +244,6 @@ void ff_plugin_process_fully_assigned_constraint(ff_plugin_t* ff, trail_token_t*
 }
 
 static
-void ff_plugin_set_lp_data(ff_plugin_t *ff, term_t t) {
-  type_t tau = term_type(ff->ctx->terms, t);
-  assert(is_ff_type(ff->ctx->types, tau));
-
-  mpz_t order;
-  mpz_init(order);
-  const rational_t *order_q = ff_type_size(ff->ctx->types, tau);
-  q_get_mpz(order_q, order);
-
-  if (ff->lp_data) {
-    assert(ff->constraint_db);
-    if (!lp_data_is_order(ff->lp_data, order)) {
-      // currently only one finite field type is supported in MCSat
-      // an error is reported when two different finite field types are presented
-      longjmp(*ff->ctx->exception, MCSAT_EXCEPTION_UNSUPPORTED_THEORY);
-    }
-  } else {
-    ff->lp_data = lp_data_new(order, ff->ctx);
-    ff->constraint_db = poly_constraint_db_new();
-    ff->feasible_set_db = ff_feasible_set_db_new(ff);
-  }
-  mpz_clear(order);
-
-  assert(ff->lp_data);
-  assert(ff->constraint_db);
-  assert(ff->feasible_set_db);
-}
-
-static
 void ff_plugin_new_term_notify(plugin_t* plugin, term_t t, trail_token_t* prop) {
   ff_plugin_t* ff = (ff_plugin_t*) plugin;
   term_table_t* terms = ff->ctx->terms;
@@ -298,14 +261,17 @@ void ff_plugin_new_term_notify(plugin_t* plugin, term_t t, trail_token_t* prop) 
     return;
   }
 
+  // uninterpreted terms are just variables
+  if (t_kind == UNINTERPRETED_TERM && term_type_kind(terms, t) != FF_TYPE) {
+    assert(0);
+    return;
+  }
+
   // The variable
   variable_t t_var = variable_db_get_variable(ff->ctx->var_db, t);
 
-// uninterpreted terms are just variables
-//  if (t_kind == UNINTERPRETED_TERM && term_type_kind(terms, t) != FF_TYPE) {
-//    assert(0);
-//    return;
-//  }
+  // get field by term type
+  ff_plugin_field_t *f = ff_plugin_get_lp_data_by_term(ff, t);
 
   int_mset_t t_variables;
   int_mset_construct(&t_variables, variable_null);
@@ -323,9 +289,9 @@ void ff_plugin_new_term_notify(plugin_t* plugin, term_t t, trail_token_t* prop) 
     // Register all the variables to libpoly (these are mcsat_variables)
     for (uint32_t i = 0; i < t_variables_list->size; ++ i) {
       term_t tt = variable_db_get_term(ff->ctx->var_db, t_variables_list->data[i]);
-      ff_plugin_set_lp_data(ff, tt);
-      if (!lp_data_variable_has_term(ff->lp_data, tt)) {
-        lp_data_add_lp_variable(ff->lp_data, terms, tt);
+      assert(term_type(ff->ctx->terms, tt) == term_type(ff->ctx->terms, t));
+      if (!lp_data_variable_has_term(f->lp_data, tt)) {
+        lp_data_add_lp_variable(f->lp_data, terms, tt);
       }
     }
 
@@ -401,10 +367,9 @@ void ff_plugin_new_term_notify(plugin_t* plugin, term_t t, trail_token_t* prop) 
     } else {
       // create variable for t if not existent
       variable_db_get_variable(ff->ctx->var_db, t);
-      ff_plugin_set_lp_data(ff, t);
       // register lp_variable for t if not existent
-      if (!lp_data_variable_has_term(ff->lp_data, t)) {
-        lp_data_add_lp_variable(ff->lp_data, terms, t);
+      if (!lp_data_variable_has_term(f->lp_data, t)) {
+        lp_data_add_lp_variable(f->lp_data, terms, t);
       }
     }
   }
@@ -415,16 +380,17 @@ void ff_plugin_new_term_notify(plugin_t* plugin, term_t t, trail_token_t* prop) 
 
 static
 lp_feasibility_set_int_t* ff_plugin_get_feasible_set(ff_plugin_t *ff, variable_t cstr_var, variable_t x, bool is_negated) {
-  const poly_constraint_t* constraint = poly_constraint_db_get(ff->constraint_db, cstr_var);
-  lp_assignment_t *m = ff->lp_data->lp_assignment;
+  ff_plugin_field_t* f = ff_plugin_get_lp_data_by_var(ff, x);
+  const poly_constraint_t* constraint = poly_constraint_db_get(f->constraint_db, cstr_var);
+  lp_assignment_t *m = f->lp_data->lp_assignment;
 
   assert(!poly_constraint_is_root_constraint(constraint));
   assert(constraint->sgn_condition == LP_SGN_EQ_0);
   assert(lp_polynomial_is_univariate_m(constraint->polynomial, m));
-  assert(lp_data_get_ring(ff->lp_data) == lp_polynomial_get_context(constraint->polynomial)->K);
+  assert(lp_data_get_ring(f->lp_data) == lp_polynomial_get_context(constraint->polynomial)->K);
 #ifndef NDEBUG
   {
-    lp_variable_t lp_x = lp_data_get_lp_variable_from_term(ff->lp_data, variable_db_get_term(ff->ctx->var_db, x));
+    lp_variable_t lp_x = lp_data_get_lp_variable_from_term(f->lp_data, variable_db_get_term(ff->ctx->var_db, x));
     lp_variable_list_t list;
     lp_variable_list_construct(&list);
     lp_polynomial_get_variables(constraint->polynomial, &list);
@@ -448,7 +414,6 @@ lp_feasibility_set_int_t* ff_plugin_get_feasible_set(ff_plugin_t *ff, variable_t
 
 static
 void ff_plugin_process_unit_constraint(ff_plugin_t* ff, trail_token_t* prop, variable_t constraint_var) {
-  assert(ff->lp_data && ff->constraint_db && ff->feasible_set_db);
 
   if (ctx_trace_enabled(ff->ctx, "ff::propagate")) {
     ctx_trace_printf(ff->ctx, "ff: processing unit constraint :\n");
@@ -464,6 +429,7 @@ void ff_plugin_process_unit_constraint(ff_plugin_t* ff, trail_token_t* prop, var
     // Variable of the constraint
     variable_t x = constraint_unit_info_get_unit_var(&ff->unit_info, constraint_var);
     assert(x != variable_null);
+    ff_plugin_field_t* f = ff_plugin_get_lp_data_by_var(ff, x);
 
     bool is_negated = !constraint_value;
     lp_feasibility_set_int_t *constraint_feasible = ff_plugin_get_feasible_set(ff, constraint_var, x, is_negated);
@@ -473,11 +439,11 @@ void ff_plugin_process_unit_constraint(ff_plugin_t* ff, trail_token_t* prop, var
       lp_feasibility_set_int_print(constraint_feasible, ctx_trace_out(ff->ctx));
     }
 
-    bool consistent = ff_feasible_set_db_update(ff->feasible_set_db, x, constraint_feasible, &constraint_var, 1);
+    bool consistent = ff_feasible_set_db_update(f->feasible_set_db, x, constraint_feasible, &constraint_var, 1);
 
     if (ctx_trace_enabled(ff->ctx, "ff::propagate")) {
       ctx_trace_printf(ff->ctx, "ff: new feasible = ");
-      lp_feasibility_set_int_print(ff_feasible_set_db_get(ff->feasible_set_db, x), ctx_trace_out(ff->ctx));
+      lp_feasibility_set_int_print(ff_feasible_set_db_get(f->feasible_set_db, x), ctx_trace_out(ff->ctx));
       ctx_trace_printf(ff->ctx, "\n");
     }
 
@@ -485,7 +451,7 @@ void ff_plugin_process_unit_constraint(ff_plugin_t* ff, trail_token_t* prop, var
       // conflict
       ff_plugin_report_conflict(ff, prop, x);
     } else {
-      const lp_feasibility_set_int_t *feasible = ff_feasible_set_db_get(ff->feasible_set_db, x);
+      const lp_feasibility_set_int_t *feasible = ff_feasible_set_db_get(f->feasible_set_db, x);
       if (lp_feasibility_set_int_is_point(feasible)) {
         // If the value is implied at zero level, propagate it
         // TODO why not always propagate it?
@@ -524,8 +490,9 @@ void ff_plugin_process_variable_assignment(ff_plugin_t* ff, trail_token_t* prop,
   // The trail
   const mcsat_trail_t* trail = ff->ctx->trail;
 
-  assert(ff->lp_data && ff->constraint_db && ff->feasible_set_db);
   assert(trail_is_consistent(trail));
+
+  ff_plugin_field_t* f = ff_plugin_get_lp_data_by_var(ff, var);
 
   // Mark the variable as processed
   ivector_push(&ff->processed_variables, var);
@@ -544,17 +511,17 @@ void ff_plugin_process_variable_assignment(ff_plugin_t* ff, trail_token_t* prop,
   }
 
   // If it's constant, just skip it
-  if (!lp_data_variable_has_term(ff->lp_data, t)) {
+  if (!lp_data_variable_has_term(f->lp_data, t)) {
     return;
   }
 
   // Add to the lp model and context
   assert(trail_get_value(trail, var)->type == VALUE_LIBPOLY);
-  lp_data_add_to_model_and_context(ff->lp_data, lp_data_get_lp_variable_from_term(ff->lp_data, t), &trail_get_value(trail, var)->lp_value);
+  lp_data_add_to_model_and_context(f->lp_data, lp_data_get_lp_variable_from_term(f->lp_data, t), &trail_get_value(trail, var)->lp_value);
 
   if (ctx_trace_enabled(ff->ctx, "ff::propagate")) {
     ctx_trace_printf(ff->ctx, "ff: var order: ");
-    lp_data_variable_order_print(ff->lp_data, ctx_trace_out(ff->ctx));
+    lp_data_variable_order_print(f->lp_data, ctx_trace_out(ff->ctx));
     ctx_trace_printf(ff->ctx, "\n");
   }
 
@@ -646,19 +613,11 @@ bool ff_plugin_check_assignment(ff_plugin_t* ff) {
 
   const mcsat_trail_t* trail = ff->ctx->trail;
   const variable_db_t* var_db = ff->ctx->var_db;
-  const lp_data_t* lp_data = ff->lp_data;
-
-  if (lp_data == NULL) {
-    // there's nothing to check
-    return true;
-  }
-
-  assert(ff->lp_data && ff->constraint_db && ff->feasible_set_db);
 
   // Go through the trail and check if all assigned are in lp_assignment
-  uint32_t i;
-  for (i = 0; i < trail->elements.size; ++ i) {
+  for (uint32_t i = 0; i < trail->elements.size; ++ i) {
     variable_t x = trail->elements.data[i];
+    lp_data_t* lp_data = ff_plugin_get_lp_data_by_var(ff, x)->lp_data;
     if (x == ff->last_decided_and_unprocessed) {
       continue;
     }
@@ -673,17 +632,22 @@ bool ff_plugin_check_assignment(ff_plugin_t* ff) {
     }
   }
 
-  // Go through lp_assignment and check if they are assigned in trail
-  const lp_variable_list_t* order = lp_variable_order_get_list(lp_data->lp_var_order);
-  for (i = 0; i < order->list_size; ++ i) {
-    lp_variable_t x_lp = order->list[i];
-    term_t x_term = lp_data_get_term_from_lp_variable(lp_data, x_lp);
-    variable_t x = variable_db_get_variable_if_exists(var_db, x_term);
-    assert(x != variable_null);
-    const mcsat_value_t* value = trail_get_value(trail, x);
-    const lp_value_t* value_lp = lp_assignment_get_value(lp_data->lp_assignment, x_lp);
-    if (lp_value_cmp(&value->lp_value, value_lp) != 0) {
-      return false;
+  for (ptr_hmap_pair_t *p = ptr_hmap_first_record(&ff->lp_datas);
+       p != NULL;
+       p = ptr_hmap_next_record(&ff->lp_datas, p)) {
+    lp_data_t* lp_data = ((ff_plugin_field_t*)p->val)->lp_data;
+    // Go through lp_assignment and check if they are assigned in trail
+    const lp_variable_list_t *order = lp_variable_order_get_list(lp_data->lp_var_order);
+    for (uint32_t i = 0; i < order->list_size; ++i) {
+      lp_variable_t x_lp = order->list[i];
+      term_t x_term = lp_data_get_term_from_lp_variable(lp_data, x_lp);
+      variable_t x = variable_db_get_variable_if_exists(var_db, x_term);
+      assert(x != variable_null);
+      const mcsat_value_t *value = trail_get_value(trail, x);
+      const lp_value_t *value_lp = lp_assignment_get_value(lp_data->lp_assignment, x_lp);
+      if (lp_value_cmp(&value->lp_value, value_lp) != 0) {
+        return false;
+      }
     }
   }
 
@@ -716,7 +680,7 @@ void ff_plugin_propagate(plugin_t* plugin, trail_token_t* prop) {
   while(trail_is_consistent(trail) && ff->trail_i < trail_size(trail)) {
     var = trail_at(trail, ff->trail_i);
     ff->trail_i ++;
-    if (variable_db_is_finitefield(var_db, var) /* TODO && same order */) {
+    if (variable_db_is_finitefield(var_db, var)) {
       ff_plugin_process_variable_assignment(ff, prop, var);
     }
     if (constraint_unit_info_has(&ff->unit_info, var)) {
@@ -762,9 +726,9 @@ void ff_plugin_decide(plugin_t* plugin, variable_t x, trail_token_t* decide_toke
   ff_plugin_t* ff = (ff_plugin_t*) plugin;
 
   assert(variable_db_is_finitefield(ff->ctx->var_db, x));
-  assert(ff->lp_data && ff->constraint_db && ff->feasible_set_db);
+  ff_plugin_field_t* f = ff_plugin_get_lp_data_by_var(ff, x);
 
-  const lp_feasibility_set_int_t* feasible = ff_feasible_set_db_get(ff->feasible_set_db, x);
+  const lp_feasibility_set_int_t* feasible = ff_feasible_set_db_get(f->feasible_set_db, x);
 
   if (ctx_trace_enabled(ff->ctx, "ff::decide")) {
     ctx_trace_printf(ff->ctx, "decide on ");
@@ -772,7 +736,7 @@ void ff_plugin_decide(plugin_t* plugin, variable_t x, trail_token_t* decide_toke
     ctx_trace_printf(ff->ctx, "[%d] at level %d\n", x, ff->ctx->trail->decision_level);
     if (feasible) {
       ctx_trace_printf(ff->ctx, "feasible :");
-      ff_feasible_set_db_print_var(ff->feasible_set_db, x, ctx_trace_out(ff->ctx));
+      ff_feasible_set_db_print_var(f->feasible_set_db, x, ctx_trace_out(ff->ctx));
       ctx_trace_printf(ff->ctx, "\n");
     } else {
       ctx_trace_printf(ff->ctx, "feasible : ALL\n");
@@ -838,6 +802,8 @@ void ff_plugin_get_conflict(plugin_t* plugin, ivector_t* conflict) {
   assert(ff->conflict_variable != variable_null);
   variable_t x = ff->conflict_variable;
 
+  ff_plugin_field_t* f = ff_plugin_get_lp_data_by_var(ff, x);
+
   if (ctx_trace_enabled(ff->ctx, "ff::conflict")) {
     ctx_trace_printf(ff->ctx, "ff_plugin_get_conflict(): ");
     ctx_trace_term(ff->ctx, variable_db_get_term(ff->ctx->var_db, x));
@@ -846,7 +812,7 @@ void ff_plugin_get_conflict(plugin_t* plugin, ivector_t* conflict) {
   ivector_t core, lemma_reasons;
   init_ivector(&core, 0);
   init_ivector(&lemma_reasons, 0);
-  ff_feasible_set_db_get_conflict_reasons(ff->feasible_set_db, x, &core, &lemma_reasons);
+  ff_feasible_set_db_get_conflict_reasons(f->feasible_set_db, x, &core, &lemma_reasons);
 
   if (ctx_trace_enabled(ff->ctx, "ff::conflict")) {
     ctx_trace_printf(ff->ctx, "ff_plugin_get_conflict(): core:\n");
@@ -946,30 +912,17 @@ static
 void ff_plugin_push(plugin_t* plugin) {
   ff_plugin_t* ff = (ff_plugin_t*) plugin;
 
-  if (ff->lp_data == NULL) {
-    return;
-  }
-
-  assert(ff->lp_data && ff->constraint_db && ff->feasible_set_db);
-
   scope_holder_push(&ff->scope,
                     &ff->trail_i,
                     &ff->processed_variables_size,
                     NULL);
 
-  lp_data_variable_order_push(ff->lp_data);
-  ff_feasible_set_db_push(ff->feasible_set_db);
+  ff_plugin_lp_data_push(ff);
 }
 
 static
 void ff_plugin_pop(plugin_t* plugin) {
   ff_plugin_t* ff = (ff_plugin_t*) plugin;
-
-  if (ff->lp_data == NULL) {
-    return;
-  }
-
-  assert(ff->lp_data && ff->constraint_db && ff->feasible_set_db);
 
   // Pop the scoped variables
   scope_holder_pop(&ff->scope,
@@ -978,7 +931,7 @@ void ff_plugin_pop(plugin_t* plugin) {
                    NULL);
 
   // Pop the variable order and the lp model
-  lp_data_variable_order_pop(ff->lp_data);
+  ff_plugin_lp_data_pop(ff);
 
   // Undo the processed variables
   while (ff->processed_variables.size > ff->processed_variables_size) {
@@ -997,8 +950,6 @@ void ff_plugin_pop(plugin_t* plugin) {
     remove_iterator_destruct(&it);
   }
 
-  ff_feasible_set_db_pop(ff->feasible_set_db);
-
   assert(ff_plugin_check_assignment(ff));
 }
 
@@ -1006,11 +957,7 @@ static
 void ff_plugin_gc_mark(plugin_t* plugin, gc_info_t* gc_vars) {
   ff_plugin_t* ff = (ff_plugin_t*) plugin;
 
-  if (ff->lp_data) {
-    assert(ff->feasible_set_db);
-    ff_feasible_set_db_gc_mark(ff->feasible_set_db, gc_vars);
-  }
-
+  ff_plugin_lp_data_gc_mark(ff, gc_vars);
   watch_list_manager_gc_mark(&ff->wlm, gc_vars);
 }
 
@@ -1021,11 +968,7 @@ void ff_plugin_gc_sweep(plugin_t* plugin, const gc_info_t* gc_vars) {
   constraint_unit_info_gc_sweep(&ff->unit_info, gc_vars);
   watch_list_manager_gc_sweep_lists(&ff->wlm, gc_vars);
 
-  if (ff->lp_data) {
-    lp_data_gc_sweep(ff->lp_data, gc_vars);
-    assert(ff->constraint_db);
-    poly_constraint_db_gc_sweep(ff->constraint_db, ff->ctx, gc_vars);
-  }
+  ff_plugin_lp_data_gc_sweep(ff, gc_vars);
 }
 
 static

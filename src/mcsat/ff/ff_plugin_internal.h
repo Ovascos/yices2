@@ -34,8 +34,10 @@
 #include "mcsat/utils/int_mset.h"
 
 #include "terms/term_manager.h"
+#include "utils/ptr_hash_map.h"
 
 typedef struct ff_plugin_s ff_plugin_t;
+typedef struct ff_plugin_field_s ff_plugin_field_t;
 
 struct ff_plugin_s {
 
@@ -51,8 +53,8 @@ struct ff_plugin_s {
   /** The unit info */
   constraint_unit_info_t unit_info;
 
-  /** Data related to libpoly */
-  lp_data_t *lp_data;
+  /** The data for each finite field type */
+  ptr_hmap_t lp_datas;
 
   /** Last variable that was decided, but yet unprocessed */
   variable_t last_decided_and_unprocessed;
@@ -94,12 +96,6 @@ struct ff_plugin_s {
     statistic_int_t* variable_hints;
   } stats;
 
-  /** Database of polynomial constraints */
-  poly_constraint_db_t* constraint_db;
-
-  /** Map from variables to their feasible sets */
-  ff_feasible_set_db_t* feasible_set_db;
-
 #if 0
   /** Buffer for evaluation */
   int_hmap_t evaluation_value_cache;
@@ -119,9 +115,38 @@ struct ff_plugin_s {
 
 };
 
+// TODO either put WLM here or move constraint_db up?
+struct ff_plugin_field_s {
+  /** Data related to libpoly */
+  lp_data_t *lp_data;
+
+  /** Database of polynomial constraints */
+  poly_constraint_db_t *constraint_db;
+
+  /** Map from variables to their feasible sets */
+  ff_feasible_set_db_t *feasible_set_db;
+};
+
 void ff_plugin_get_constraint_variables(ff_plugin_t* ff, term_t constraint, int_mset_t* vars_out);
 
 void ff_plugin_get_term_variables(ff_plugin_t* ff, term_t t, int_mset_t* vars_out);
 
+void ff_plugin_lp_data_init(ff_plugin_t *ff);
+
+void ff_plugin_lp_data_delete(ff_plugin_t *ff);
+
+void ff_plugin_lp_data_push(ff_plugin_t *ff);
+
+void ff_plugin_lp_data_pop(ff_plugin_t *ff);
+
+void ff_plugin_lp_data_gc_mark(ff_plugin_t *ff, gc_info_t* gc_vars);
+
+void ff_plugin_lp_data_gc_sweep(ff_plugin_t *ff, const gc_info_t* gc_vars);
+
+ff_plugin_field_t* ff_plugin_get_lp_data_by_term(ff_plugin_t *ff, term_t t);
+
+ff_plugin_field_t* ff_plugin_get_lp_data_by_type(ff_plugin_t *ff, type_t tau);
+
+ff_plugin_field_t* ff_plugin_get_lp_data_by_var(ff_plugin_t *ff, variable_t x);
 
 #endif /* FF_PLUGIN_INTERNAL_H */

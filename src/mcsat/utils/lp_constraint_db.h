@@ -152,6 +152,6 @@ lp_feasibility_set_t* poly_constraint_get_feasible_set(const poly_constraint_t* 
 bool poly_constraint_infer_bounds(const poly_constraint_t* cstr, bool negated, lp_interval_assignment_t* m, ivector_t* inferred_vars);
 
 /** Remove unused constraints */
-void poly_constraint_db_gc_sweep(poly_constraint_db_t* db, plugin_context_t* ctx, const gc_info_t* gc_vars);
+void poly_constraint_db_gc_sweep(poly_constraint_db_t* db, const gc_info_t* gc_vars);
 
 #endif /* LP_CONSTRAINT_DB_H */

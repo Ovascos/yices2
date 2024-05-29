@@ -105,3 +105,139 @@ void ff_plugin_get_term_variables(ff_plugin_t* ff, term_t t, int_mset_t* vars_ou
     int_mset_add(vars_out, variable_db_get_variable(var_db, t));
   }
 }
+
+static
+ff_plugin_field_t* ff_plugin_field_data_new(ff_plugin_t *ff, type_t tau) {
+  mpz_t order;
+  mpz_init(order);
+  const rational_t *order_q = ff_type_size(ff->ctx->types, tau);
+  q_get_mpz(order_q, order);
+
+  ff_plugin_field_t *new = safe_malloc(sizeof(ff_plugin_field_t));
+  new->lp_data = lp_data_new(order, ff->ctx);
+  new->feasible_set_db = ff_feasible_set_db_new(ff->ctx, new->lp_data);
+  new->constraint_db = poly_constraint_db_new();
+
+  mpz_clear(order);
+  return new;
+}
+
+static
+void ff_plugin_field_data_delete(ff_plugin_field_t *ff_f) {
+  assert(ff_f);
+  assert(ff_f->lp_data);
+  assert(ff_f->constraint_db);
+  assert(ff_f->feasible_set_db);
+  lp_data_delete(ff_f->lp_data);
+  poly_constraint_db_delete(ff_f->constraint_db);
+  ff_feasible_set_db_delete(ff_f->feasible_set_db);
+}
+
+static
+void ff_plugin_field_data_push(ff_plugin_field_t *ff_f) {
+  assert(ff_f);
+  assert(ff_f->lp_data);
+  assert(ff_f->feasible_set_db);
+
+  lp_data_variable_order_push(ff_f->lp_data);
+  ff_feasible_set_db_push(ff_f->feasible_set_db);
+}
+
+static
+void ff_plugin_field_data_pop(ff_plugin_field_t *ff_f) {
+  assert(ff_f);
+  assert(ff_f->lp_data);
+  assert(ff_f->feasible_set_db);
+
+  ff_feasible_set_db_pop(ff_f->feasible_set_db);
+  lp_data_variable_order_pop(ff_f->lp_data);
+}
+
+static
+void ff_plugin_field_data_gc_mark(ff_plugin_field_t *ff_f, gc_info_t* gc_vars) {
+  assert(ff_f);
+  assert(ff_f->feasible_set_db);
+
+  ff_feasible_set_db_gc_mark(ff_f->feasible_set_db, gc_vars);
+}
+
+static
+void ff_plugin_field_data_gc_sweep(ff_plugin_field_t *ff_f, const gc_info_t* gc_vars) {
+  assert(ff_f);
+  assert(ff_f->lp_data);
+  assert(ff_f->constraint_db);
+  assert(ff_f->feasible_set_db);
+
+  lp_data_gc_sweep(ff_f->lp_data, gc_vars);
+  poly_constraint_db_gc_sweep(ff_f->constraint_db, gc_vars);
+}
+
+ff_plugin_field_t* ff_plugin_get_lp_data_by_type(ff_plugin_t *ff, type_t tau) {
+  assert(is_ff_type(ff->ctx->types, tau));
+
+  ptr_hmap_pair_t *found = ptr_hmap_get(&ff->lp_datas, tau);
+
+  if (found->val == NULL) {
+    found->val = ff_plugin_field_data_new(ff, tau);
+    // otherwise push/pop are imbalanced
+    assert(trail_is_at_base_level(ff->ctx->trail));
+    // TODO push n times if trail is at level n
+  }
+
+  return found->val;
+}
+
+ff_plugin_field_t* ff_plugin_get_lp_data_by_var(ff_plugin_t *ff, variable_t x) {
+  type_t tau = variable_db_get_type(ff->ctx->var_db, x);
+  return ff_plugin_get_lp_data_by_type(ff, tau);
+}
+
+ff_plugin_field_t* ff_plugin_get_lp_data_by_term(ff_plugin_t *ff, term_t t) {
+  type_t tau = term_type(ff->ctx->terms, t);
+  return ff_plugin_get_lp_data_by_type(ff, tau);
+}
+
+void ff_plugin_lp_data_init(ff_plugin_t *ff) {
+  init_ptr_hmap(&ff->lp_datas, 0);
+}
+
+void ff_plugin_lp_data_pop(ff_plugin_t *ff) {
+  for (ptr_hmap_pair_t *p = ptr_hmap_first_record(&ff->lp_datas);
+       p != NULL;
+       p = ptr_hmap_next_record(&ff->lp_datas, p)) {
+    ff_plugin_field_data_pop(p->val);
+  }
+}
+
+void ff_plugin_lp_data_push(ff_plugin_t *ff) {
+  for (ptr_hmap_pair_t *p = ptr_hmap_first_record(&ff->lp_datas);
+       p != NULL;
+       p = ptr_hmap_next_record(&ff->lp_datas, p)) {
+    ff_plugin_field_data_push(p->val);
+  }
+}
+
+void ff_plugin_lp_data_gc_mark(ff_plugin_t *ff, gc_info_t* gc_vars) {
+  for (ptr_hmap_pair_t *p = ptr_hmap_first_record(&ff->lp_datas);
+       p != NULL;
+       p = ptr_hmap_next_record(&ff->lp_datas, p)) {
+    ff_plugin_field_data_gc_mark(p->val, gc_vars);
+  }
+}
+
+void ff_plugin_lp_data_gc_sweep(ff_plugin_t *ff, const gc_info_t* gc_vars) {
+  for (ptr_hmap_pair_t *p = ptr_hmap_first_record(&ff->lp_datas);
+       p != NULL;
+       p = ptr_hmap_next_record(&ff->lp_datas, p)) {
+    ff_plugin_field_data_gc_sweep(p->val, gc_vars);
+  }
+}
+void ff_plugin_lp_data_delete(ff_plugin_t *ff) {
+  for (ptr_hmap_pair_t *p = ptr_hmap_first_record(&ff->lp_datas);
+  p != NULL;
+  p = ptr_hmap_next_record(&ff->lp_datas, p)) {
+    ff_plugin_field_data_delete(p->val);
+    safe_free(p->val);
+  }
+  delete_ptr_hmap(&ff->lp_datas);
+}
