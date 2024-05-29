@@ -518,45 +518,45 @@ void ff_plugin_process_unit_constraint(ff_plugin_t* ff, trail_token_t* prop, var
         // you need to find a term s that evaluates to the propagated value under the current assignment, but works in general,
         // and you need to find an explanation for this propagation
         if (!trail_has_value(ff->ctx->trail, x)) {
-        const lp_polynomial_t *polynomial = poly_constraint_get_polynomial(constraint);
-        lp_value_t x_value;
-        lp_value_construct_zero(&x_value);
-        assert(x_value.type == LP_VALUE_INTEGER);
-            lp_feasibility_set_int_pick_value(feasible, &x_value.value.z);
+          const lp_polynomial_t *polynomial = poly_constraint_get_polynomial(constraint);
+          lp_value_t x_value;
+          lp_value_construct_zero(&x_value);
+          assert(x_value.type == LP_VALUE_INTEGER);
+          lp_feasibility_set_int_pick_value(feasible, &x_value.value.z);
           if (trail_is_at_base_level(ff->ctx->trail)) {
-          mcsat_value_t value;
-          mcsat_value_construct_lp_value(&value, &x_value);
-          ff_plugin_report_propagation_base_level(ff, prop, x, &value);
-          mcsat_value_destruct(&value);
-        } else if (trail_get_boolean_value(ff->ctx->trail, constraint_var) == true
-                   && poly_constraint_get_sign_condition(constraint) == LP_SGN_EQ_0
-                   && lp_polynomial_degree(polynomial) == 1
-                   && lp_polynomial_lc_is_constant(polynomial)) {
-          // TODO check any constraint from ff_feasible_set reasons (one is enough to propagate, it's not required to be the current)
-
-          term_t x_term = variable_db_get_term(ff->ctx->var_db, x);
-          assert(int_hmap_find(&ff->lp_data->term_to_lp_var_map, x_term) != NULL);
-          if (ctx_trace_enabled(ff->ctx, "ff::propagate::fup")) {
-            int_hmap_pair_t *tmp = int_hmap_find(&ff->lp_data->term_to_lp_var_map, x_term);
-            ctx_trace_printf(ff->ctx, "ff: propagating variable ");
-            variable_db_print_variable(ff->ctx->var_db, x, ctx_trace_out(ff->ctx));
-            ctx_trace_printf(ff->ctx, " [lp_var %s]", lp_variable_db_get_name(ff->lp_data->lp_var_db, tmp->val));
-            ctx_trace_printf(ff->ctx, " to value ");
-            lp_value_print(&x_value, ctx_trace_out(ff->ctx));
-            ctx_trace_printf(ff->ctx, " using constraint ");
-            poly_constraint_print(constraint, ctx_trace_out(ff->ctx));
-            ctx_trace_printf(ff->ctx, "\n");
-          }
-          mcsat_value_t value;
+            mcsat_value_t value;
             mcsat_value_construct_lp_value(&value, &x_value);
-          ff_plugin_report_propagation(ff, prop, x, &value, constraint_var);
-          mcsat_value_destruct(&value);
+            ff_plugin_report_propagation_base_level(ff, prop, x, &value);
+            mcsat_value_destruct(&value);
+          } else if (trail_get_boolean_value(ff->ctx->trail, constraint_var) == true
+                     && poly_constraint_get_sign_condition(constraint) == LP_SGN_EQ_0
+                     && lp_polynomial_degree(polynomial) == 1
+                     && lp_polynomial_lc_is_constant(polynomial)) {
+            // TODO check any constraint from ff_feasible_set reasons (one is enough to propagate, it's not required to be the current)
+
+            term_t x_term = variable_db_get_term(ff->ctx->var_db, x);
+            assert(int_hmap_find(&ff->lp_data->term_to_lp_var_map, x_term) != NULL);
+            if (ctx_trace_enabled(ff->ctx, "ff::propagate::fup")) {
+              int_hmap_pair_t *tmp = int_hmap_find(&ff->lp_data->term_to_lp_var_map, x_term);
+              ctx_trace_printf(ff->ctx, "ff: propagating variable ");
+              variable_db_print_variable(ff->ctx->var_db, x, ctx_trace_out(ff->ctx));
+              ctx_trace_printf(ff->ctx, " [lp_var %s]", lp_variable_db_get_name(ff->lp_data->lp_var_db, tmp->val));
+              ctx_trace_printf(ff->ctx, " to value ");
+              lp_value_print(&x_value, ctx_trace_out(ff->ctx));
+              ctx_trace_printf(ff->ctx, " using constraint ");
+              poly_constraint_print(constraint, ctx_trace_out(ff->ctx));
+              ctx_trace_printf(ff->ctx, "\n");
+            }
+            mcsat_value_t value;
+            mcsat_value_construct_lp_value(&value, &x_value);
+            ff_plugin_report_propagation(ff, prop, x, &value, constraint_var);
+            mcsat_value_destruct(&value);
           } else {
-            (*ff->stats.variable_hints) ++;
+            (*ff->stats.variable_hints)++;
             ff->ctx->hint_next_decision(ff->ctx, x);
           }
+          lp_value_destruct(&x_value);
         }
-        lp_value_destruct(&x_value);
       }
     }
   }
