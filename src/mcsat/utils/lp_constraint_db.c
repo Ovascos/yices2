@@ -320,7 +320,7 @@ bool poly_constraint_db_has(poly_constraint_db_t* db, variable_t constraint_var)
   return int_hmap_find(&db->var_to_constraint_map, constraint_var) != NULL;
 }
 
-const poly_constraint_t* poly_constraint_db_get(poly_constraint_db_t* db, variable_t constraint_var) {
+const poly_constraint_t* poly_constraint_db_get(const poly_constraint_db_t* db, variable_t constraint_var) {
   assert(poly_constraint_db_check(db));
   int_hmap_pair_t* find;
   find = int_hmap_find(&db->var_to_constraint_map, constraint_var);

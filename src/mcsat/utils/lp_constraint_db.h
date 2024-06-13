@@ -135,7 +135,7 @@ const ivector_t* poly_constraint_db_get_constraints(const poly_constraint_db_t* 
 bool poly_constraint_db_has(poly_constraint_db_t* db, variable_t constraint_var);
 
 /** Get the constraint of the variable (must exist) */
-const poly_constraint_t* poly_constraint_db_get(poly_constraint_db_t* db, variable_t constraint_var);
+const poly_constraint_t* poly_constraint_db_get(const poly_constraint_db_t* db, variable_t constraint_var);
 
 /**
  * Evaluate the constraint. Returns the value, and sets the level to the level of the constraint.

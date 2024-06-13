@@ -1146,7 +1146,7 @@ type_t bv_type(type_table_t *table, uint32_t size) {
  * FiniteField type
  * - order must be a positive prime
  */
-type_t ff_type(type_table_t *table, mpz_t order) {
+type_t ff_type(type_table_t *table, const mpz_t order) {
   rational_t mod;
 
   q_init(&mod);

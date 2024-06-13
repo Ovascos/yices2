@@ -494,7 +494,7 @@ extern type_t bv_type(type_table_t *table, uint32_t size);
  * FiniteFiled types
  * This requires order to be a positive prime
  */
-extern type_t ff_type(type_table_t *table, mpz_t order);
+extern type_t ff_type(type_table_t *table, const mpz_t order);
 
 /*
  * FiniteFiled types

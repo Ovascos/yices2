@@ -36,7 +36,7 @@ lp_polynomial_t* lp_polynomial_from_term_ff(ff_plugin_t* ff, term_t t, lp_intege
 /**
  * Get yices term from polynomial (FF plugin wrapper).
  */
-term_t lp_polynomial_to_yices_term_ff(ff_plugin_t *ff, const lp_polynomial_t *lp_p);
+term_t lp_polynomial_to_yices_term_ff(ff_plugin_t *ff, const lp_polynomial_t *lp_p, type_t tau);
 
 /** Add a new constraint */
 void ff_poly_constraint_add(ff_plugin_t *ff, variable_t constraint_var);

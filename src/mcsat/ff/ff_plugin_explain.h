@@ -20,9 +20,8 @@
 #define FF_PLUGIN_EXPLAIN_H
 
 #include "utils/int_vectors.h"
+#include "mcsat/ff/ff_plugin_internal.h"
 
-typedef struct ff_plugin_s ff_plugin_t;
-
-void ff_plugin_explain_conflict(ff_plugin_t* ff, const ivector_t* core, const ivector_t* lemma_reasons, ivector_t* conflict);
+void ff_plugin_explain_conflict(ff_plugin_t* ff, ff_plugin_field_t* fff, const ivector_t* core, const ivector_t* lemma_reasons, ivector_t* conflict);
 
 #endif /* FF_PLUGIN_EXPLAIN_H */

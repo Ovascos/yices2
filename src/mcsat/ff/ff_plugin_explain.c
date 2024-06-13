@@ -644,14 +644,15 @@ void explain_multi(const lp_data_t *lp_data,
 
 static
 term_t lp_polynomial_to_term(ff_plugin_t* ff, const lp_polynomial_t* p) {
-  term_t term = lp_polynomial_to_yices_arith_ff_term(ff->lp_data, p, ff->ctx->tm->terms, &ff->buffer);
+  lp_data_t *lp_data = ff_plugin_get_lp_data_by_lp_polynomial(ff, p)->lp_data;
+  term_t term = lp_polynomial_to_yices_arith_ff_term(lp_data, p, ff->ctx->tm->terms, &ff->buffer);
 #ifndef NDEBUG
-  lp_polynomial_t *check = lp_polynomial_from_term(ff->lp_data, term, ff->ctx->tm->terms, NULL);
+  lp_polynomial_t *check = lp_polynomial_from_term(lp_data, term, ff->ctx->tm->terms, NULL);
   assert(lp_polynomial_cmp(p, check) == 0);
   lp_polynomial_delete(check);
 #else
   // rb buffer seems to overflow somewhere? -> report out of memory to stay sound
-  lp_polynomial_t *check = lp_polynomial_from_term(ff->lp_data, term, ff->ctx->tm->terms, NULL);
+  lp_polynomial_t *check = lp_polynomial_from_term(lp_data, term, ff->ctx->tm->terms, NULL);
   if (lp_polynomial_cmp(p, check) != 0) {
     out_of_memory();
   }
@@ -749,9 +750,10 @@ void clean_poly(lp_polynomial_t *poly) {
   }
 }
 
-void ff_plugin_explain_conflict(ff_plugin_t* ff, const ivector_t* core, const ivector_t* lemma_reasons, ivector_t* conflict) {
+void ff_plugin_explain_conflict(ff_plugin_t* ff, ff_plugin_field_t* fff, const ivector_t* core, const ivector_t* lemma_reasons, ivector_t* conflict) {
   const mcsat_trail_t* trail = ff->ctx->trail;
-  variable_db_t* var_db = ff->ctx->var_db;
+  const lp_data_t* lp_data = fff->lp_data;
+  const variable_db_t* var_db = ff->ctx->var_db;
 
   if (ctx_trace_enabled(ff->ctx, "ff::explain")) {
     ctx_trace_printf(ff->ctx, "ff_plugin_explain_conflict()\n");
@@ -790,7 +792,7 @@ void ff_plugin_explain_conflict(ff_plugin_t* ff, const ivector_t* core, const iv
   variable_t conflict_var = ff->conflict_variable;
   assert(conflict_var != variable_null);
   term_t conflict_term = variable_db_get_term(var_db, conflict_var);
-  lp_variable_t conflict_lp_var = lp_data_get_lp_variable_from_term(ff->lp_data, conflict_term);
+  lp_variable_t conflict_lp_var = lp_data_get_lp_variable_from_term(lp_data, conflict_term);
 #endif
 
   for (uint32_t core_i = 0; core_i < core->size; ++ core_i) {
@@ -832,18 +834,18 @@ void ff_plugin_explain_conflict(ff_plugin_t* ff, const ivector_t* core, const iv
   assert(cnt_pos + cnt_neg > 0);
 
   if (cnt_pos + cnt_neg > 1) {
-    explain_multi(ff->lp_data, &pos, &neg, &e_eq, &e_ne);
+    explain_multi(lp_data, &pos, &neg, &e_eq, &e_ne);
   } else if (cnt_pos == 1) {
-    explain_single(ff->lp_data, pos.data[0], &e_ne);
+    explain_single(lp_data, pos.data[0], &e_ne);
   } else if (cnt_neg == 1) {
-    explain_single(ff->lp_data, neg.data[0], &e_ne);
+    explain_single(lp_data, neg.data[0], &e_ne);
   }
 
   lp_polynomial_hash_set_close(&e_eq);
   lp_polynomial_hash_set_close(&e_ne);
 
 #ifndef NDEBUG
-  const lp_assignment_t *m = ff->lp_data->lp_assignment;
+  const lp_assignment_t *m = lp_data->lp_assignment;
 #endif
 
   for (size_t i = 0; i < e_ne.size; ++i) {

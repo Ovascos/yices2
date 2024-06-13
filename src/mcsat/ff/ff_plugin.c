@@ -95,6 +95,7 @@ void ff_plugin_construct(plugin_t* plugin, plugin_context_t* ctx) {
   ctx->request_term_notification_by_type(ctx, FF_TYPE);
   ctx->request_decision_calls(ctx, FF_TYPE);
 
+  ff->constraint_db = poly_constraint_db_new();
   ff_plugin_lp_data_init(ff);
 
   init_rba_buffer(&ff->buffer, ctx->terms->pprods);
@@ -108,6 +109,7 @@ void ff_plugin_destruct(plugin_t* plugin) {
   ff_plugin_t* ff = (ff_plugin_t*) plugin;
 
   constraint_unit_info_destruct(&ff->unit_info);
+  poly_constraint_db_delete(ff->constraint_db);
   ff_plugin_lp_data_delete(ff);
 
   delete_ivector(&ff->processed_variables);
@@ -138,11 +140,8 @@ const mcsat_value_t* ff_plugin_constraint_evaluate(ff_plugin_t* ff, variable_t c
 
   assert(!trail_has_value(ff->ctx->trail, cstr_var));
 
-  // TODO this should not work
-  ff_plugin_field_t* f = ff_plugin_get_lp_data_by_var(ff, cstr_var);
-
   // Check if it is a valid constraints
-  const poly_constraint_t* cstr = poly_constraint_db_get(f->constraint_db, cstr_var);
+  const poly_constraint_t* cstr = poly_constraint_db_get(ff->constraint_db, cstr_var);
   if (!poly_constraint_is_valid(cstr)) {
     return NULL;
   }
@@ -178,6 +177,7 @@ const mcsat_value_t* ff_plugin_constraint_evaluate(ff_plugin_t* ff, variable_t c
   bool cstr_value = false;
 
 #if 0
+  // TODO add cache again
   // Check the cache
   int_hmap_pair_t* find_value = int_hmap_find(&ff->evaluation_value_cache, cstr_var);
   int_hmap_pair_t* find_timestamp = NULL;
@@ -196,7 +196,8 @@ const mcsat_value_t* ff_plugin_constraint_evaluate(ff_plugin_t* ff, variable_t c
   // do not evaluate (see ok below, but we can evaluate them in the cache)
 
   // Compute the evaluation
-  bool ok = poly_constraint_evaluate(cstr, f->lp_data, &cstr_value);
+  lp_data_t *lp_data = ff_plugin_get_lp_data_by_lp_polynomial(ff, cstr->polynomial)->lp_data;
+  bool ok = poly_constraint_evaluate(cstr, lp_data, &cstr_value);
   (void) ok;
   assert(ok);
   (*ff->stats.evaluations) ++;
@@ -270,9 +271,6 @@ void ff_plugin_new_term_notify(plugin_t* plugin, term_t t, trail_token_t* prop) 
   // The variable
   variable_t t_var = variable_db_get_variable(ff->ctx->var_db, t);
 
-  // get field by term type
-  ff_plugin_field_t *f = ff_plugin_get_lp_data_by_term(ff, t);
-
   int_mset_t t_variables;
   int_mset_construct(&t_variables, variable_null);
   ff_plugin_get_constraint_variables(ff, t, &t_variables);
@@ -289,9 +287,10 @@ void ff_plugin_new_term_notify(plugin_t* plugin, term_t t, trail_token_t* prop) 
     // Register all the variables to libpoly (these are mcsat_variables)
     for (uint32_t i = 0; i < t_variables_list->size; ++ i) {
       term_t tt = variable_db_get_term(ff->ctx->var_db, t_variables_list->data[i]);
-      assert(term_type(ff->ctx->terms, tt) == term_type(ff->ctx->terms, t));
-      if (!lp_data_variable_has_term(f->lp_data, tt)) {
-        lp_data_add_lp_variable(f->lp_data, terms, tt);
+      // get field by term type
+      ff_plugin_field_t *fff = ff_plugin_create_or_get_lp_data_by_term(ff, tt);
+      if (!lp_data_variable_has_term(fff->lp_data, tt)) {
+        lp_data_add_lp_variable(fff->lp_data, terms, tt);
       }
     }
 
@@ -368,8 +367,9 @@ void ff_plugin_new_term_notify(plugin_t* plugin, term_t t, trail_token_t* prop) 
       // create variable for t if not existent
       variable_db_get_variable(ff->ctx->var_db, t);
       // register lp_variable for t if not existent
-      if (!lp_data_variable_has_term(f->lp_data, t)) {
-        lp_data_add_lp_variable(f->lp_data, terms, t);
+      ff_plugin_field_t *fff = ff_plugin_create_or_get_lp_data_by_term(ff, t);
+      if (!lp_data_variable_has_term(fff->lp_data, t)) {
+        lp_data_add_lp_variable(fff->lp_data, terms, t);
       }
     }
   }
@@ -380,17 +380,17 @@ void ff_plugin_new_term_notify(plugin_t* plugin, term_t t, trail_token_t* prop) 
 
 static
 lp_feasibility_set_int_t* ff_plugin_get_feasible_set(ff_plugin_t *ff, variable_t cstr_var, variable_t x, bool is_negated) {
-  ff_plugin_field_t* f = ff_plugin_get_lp_data_by_var(ff, x);
-  const poly_constraint_t* constraint = poly_constraint_db_get(f->constraint_db, cstr_var);
-  lp_assignment_t *m = f->lp_data->lp_assignment;
+  ff_plugin_field_t* fff = ff_plugin_get_lp_data_by_var(ff, x);
+  const poly_constraint_t* constraint = poly_constraint_db_get(ff->constraint_db, cstr_var);
+  lp_assignment_t *m = fff->lp_data->lp_assignment;
 
   assert(!poly_constraint_is_root_constraint(constraint));
   assert(constraint->sgn_condition == LP_SGN_EQ_0);
   assert(lp_polynomial_is_univariate_m(constraint->polynomial, m));
-  assert(lp_data_get_ring(f->lp_data) == lp_polynomial_get_context(constraint->polynomial)->K);
+  assert(lp_int_ring_equal(lp_data_get_ring(fff->lp_data), lp_polynomial_get_context(constraint->polynomial)->K));
 #ifndef NDEBUG
   {
-    lp_variable_t lp_x = lp_data_get_lp_variable_from_term(f->lp_data, variable_db_get_term(ff->ctx->var_db, x));
+    lp_variable_t lp_x = lp_data_get_lp_variable_from_term(fff->lp_data, variable_db_get_term(ff->ctx->var_db, x));
     lp_variable_list_t list;
     lp_variable_list_construct(&list);
     lp_polynomial_get_variables(constraint->polynomial, &list);
@@ -802,7 +802,7 @@ void ff_plugin_get_conflict(plugin_t* plugin, ivector_t* conflict) {
   assert(ff->conflict_variable != variable_null);
   variable_t x = ff->conflict_variable;
 
-  ff_plugin_field_t* f = ff_plugin_get_lp_data_by_var(ff, x);
+  ff_plugin_field_t* fff = ff_plugin_get_lp_data_by_var(ff, x);
 
   if (ctx_trace_enabled(ff->ctx, "ff::conflict")) {
     ctx_trace_printf(ff->ctx, "ff_plugin_get_conflict(): ");
@@ -812,7 +812,7 @@ void ff_plugin_get_conflict(plugin_t* plugin, ivector_t* conflict) {
   ivector_t core, lemma_reasons;
   init_ivector(&core, 0);
   init_ivector(&lemma_reasons, 0);
-  ff_feasible_set_db_get_conflict_reasons(f->feasible_set_db, x, &core, &lemma_reasons);
+  ff_feasible_set_db_get_conflict_reasons(fff->feasible_set_db, x, &core, &lemma_reasons);
 
   if (ctx_trace_enabled(ff->ctx, "ff::conflict")) {
     ctx_trace_printf(ff->ctx, "ff_plugin_get_conflict(): core:\n");
@@ -829,7 +829,7 @@ void ff_plugin_get_conflict(plugin_t* plugin, ivector_t* conflict) {
   // not yet used
   assert(lemma_reasons.size == 0);
   assert(conflict->size == 0);
-  ff_plugin_explain_conflict(ff, &core, &lemma_reasons, conflict);
+  ff_plugin_explain_conflict(ff, fff, &core, &lemma_reasons, conflict);
 
   if (ctx_trace_enabled(ff->ctx, "ff::conflict")) {
     ctx_trace_printf(ff->ctx, "ff_plugin_get_conflict(): conflict:\n");
@@ -967,7 +967,7 @@ void ff_plugin_gc_sweep(plugin_t* plugin, const gc_info_t* gc_vars) {
 
   constraint_unit_info_gc_sweep(&ff->unit_info, gc_vars);
   watch_list_manager_gc_sweep_lists(&ff->wlm, gc_vars);
-
+  poly_constraint_db_gc_sweep(ff->constraint_db, gc_vars);
   ff_plugin_lp_data_gc_sweep(ff, gc_vars);
 }
 

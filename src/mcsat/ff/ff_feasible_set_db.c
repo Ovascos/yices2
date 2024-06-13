@@ -412,11 +412,11 @@ void ff_feasible_set_quickxplain(const ff_feasible_set_db_t* db, const lp_feasib
 
 /** Compare variables first by degree, then by level */
 static
-bool compare_reasons(void *ff_plugin, int32_t r1, int32_t r2) {
+bool compare_reasons(void *feasible_set_db, int32_t r1, int32_t r2) {
 
-  const ff_plugin_t* ff = (ff_plugin_t*) ff_plugin;
-  ff_feasible_set_db_t* db = ff->feasible_set_db;
-  poly_constraint_db_t* poly_db = ff->constraint_db;
+  const ff_feasible_set_db_t* db = (ff_feasible_set_db_t*) feasible_set_db;
+  const ff_plugin_t* ff = db->plugin;
+  const poly_constraint_db_t* poly_db = ff->constraint_db;
   const mcsat_trail_t* trail = ff->ctx->trail;
 
   // Get max degree and max level of the reasons of first constraint
@@ -467,8 +467,8 @@ bool compare_reasons(void *ff_plugin, int32_t r1, int32_t r2) {
 }
 
 static
-void print_conflict_reasons(FILE* out, const ff_feasible_set_db_t* db, ff_plugin_t* ff, ivector_t* reason_indices) {
-  poly_constraint_db_t* poly_db = ff->constraint_db;
+void print_conflict_reasons(FILE* out, const ff_feasible_set_db_t* db, ivector_t* reason_indices) {
+  poly_constraint_db_t* poly_db = db->plugin->constraint_db;
 
   for (uint32_t i = 0; i < reason_indices->size; ++ i) {
     fprintf(out, "[%d]: ", i);
@@ -485,17 +485,16 @@ void print_conflict_reasons(FILE* out, const ff_feasible_set_db_t* db, ff_plugin
 }
 
 static
-void ff_feasible_set_filter_reason_indices(const ff_feasible_set_db_t* db, ivector_t* reasons_indices) {
-  ff_plugin_t *ff = db->plugin;
+void ff_feasible_set_filter_reason_indices(const ff_feasible_set_db_t* db, const lp_data_t* lp_data, ivector_t* reasons_indices) {
   // The set we're trying to make empty
-  lp_feasibility_set_int_t* S = lp_feasibility_set_int_new_full(ff->lp_data->lp_ctx->K);
+  lp_feasibility_set_int_t* S = lp_feasibility_set_int_new_full(lp_data->lp_ctx->K);
 
   // Sort variables by degree and trail level decreasing
-  int_array_sort2(reasons_indices->data, reasons_indices->size, (void*) ff, compare_reasons);
+  int_array_sort2(reasons_indices->data, reasons_indices->size, (void*) db, compare_reasons);
 
   if (ctx_trace_enabled(db->plugin->ctx, "nra::conflict")) {
     ctx_trace_printf(db->plugin->ctx, "filtering: before\n");
-    print_conflict_reasons(ctx_trace_out(db->plugin->ctx), db, ff, reasons_indices);
+    print_conflict_reasons(ctx_trace_out(db->plugin->ctx), db, reasons_indices);
   }
 
   // Minimize the core
@@ -506,11 +505,11 @@ void ff_feasible_set_filter_reason_indices(const ff_feasible_set_db_t* db, ivect
   delete_ivector(&out);
 
   // Sort again for consistency
-  int_array_sort2(reasons_indices->data, reasons_indices->size, (void*) ff, compare_reasons);
+  int_array_sort2(reasons_indices->data, reasons_indices->size, (void*) db, compare_reasons);
 
   if (ctx_trace_enabled(db->plugin->ctx, "nra::conflict")) {
     ctx_trace_printf(db->plugin->ctx, "filtering: after\n");
-    print_conflict_reasons(ctx_trace_out(db->plugin->ctx), db, ff, reasons_indices);
+    print_conflict_reasons(ctx_trace_out(db->plugin->ctx), db, reasons_indices);
   }
 
   // Remove temps
@@ -537,13 +536,16 @@ void ff_feasible_set_db_get_conflict_reasons(const ff_feasible_set_db_t* db, var
     ctx_trace_printf(db->plugin->ctx, "\n");
   }
 
+  ff_plugin_field_t *field = ff_plugin_get_lp_data_by_var(db->plugin, x);
+  assert(field->feasible_set_db == db);
+
   ivector_t reasons_indices;
   init_ivector(&reasons_indices, 0);
 
   // Get the indices of the set refinements
   ff_feasible_set_get_conflict_reason_indices(db, x, &reasons_indices);
 
-  ff_feasible_set_filter_reason_indices(db, &reasons_indices);
+  ff_feasible_set_filter_reason_indices(db, field->lp_data, &reasons_indices);
 
   // Return the conjunctive reasons
   for (uint32_t i = 0; i < reasons_indices.size; ++ i) {

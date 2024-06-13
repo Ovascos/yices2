@@ -17,6 +17,7 @@
  */
 
 #include "mcsat/ff/ff_plugin_internal.h"
+#include <poly/polynomial.h>
 
 #include "mcsat/tracing.h"
 
@@ -115,22 +116,19 @@ ff_plugin_field_t* ff_plugin_field_data_new(ff_plugin_t *ff, type_t tau) {
 
   ff_plugin_field_t *new = safe_malloc(sizeof(ff_plugin_field_t));
   new->lp_data = lp_data_new(order, ff->ctx);
-  new->feasible_set_db = ff_feasible_set_db_new(ff->ctx, new->lp_data);
-  new->constraint_db = poly_constraint_db_new();
+  new->feasible_set_db = ff_feasible_set_db_new(ff);
 
   mpz_clear(order);
   return new;
 }
 
 static
-void ff_plugin_field_data_delete(ff_plugin_field_t *ff_f) {
-  assert(ff_f);
-  assert(ff_f->lp_data);
-  assert(ff_f->constraint_db);
-  assert(ff_f->feasible_set_db);
-  lp_data_delete(ff_f->lp_data);
-  poly_constraint_db_delete(ff_f->constraint_db);
-  ff_feasible_set_db_delete(ff_f->feasible_set_db);
+void ff_plugin_field_data_delete(ff_plugin_field_t *fff) {
+  assert(fff);
+  assert(fff->lp_data);
+  assert(fff->feasible_set_db);
+  lp_data_delete(fff->lp_data);
+  ff_feasible_set_db_delete(fff->feasible_set_db);
 }
 
 static
@@ -162,17 +160,15 @@ void ff_plugin_field_data_gc_mark(ff_plugin_field_t *ff_f, gc_info_t* gc_vars) {
 }
 
 static
-void ff_plugin_field_data_gc_sweep(ff_plugin_field_t *ff_f, const gc_info_t* gc_vars) {
-  assert(ff_f);
-  assert(ff_f->lp_data);
-  assert(ff_f->constraint_db);
-  assert(ff_f->feasible_set_db);
+void ff_plugin_field_data_gc_sweep(ff_plugin_field_t *fff, const gc_info_t* gc_vars) {
+  assert(fff);
+  assert(fff->lp_data);
+  assert(fff->feasible_set_db);
 
-  lp_data_gc_sweep(ff_f->lp_data, gc_vars);
-  poly_constraint_db_gc_sweep(ff_f->constraint_db, gc_vars);
+  lp_data_gc_sweep(fff->lp_data, gc_vars);
 }
 
-ff_plugin_field_t* ff_plugin_get_lp_data_by_type(ff_plugin_t *ff, type_t tau) {
+ff_plugin_field_t* ff_plugin_create_or_get_lp_data_by_type(ff_plugin_t *ff, type_t tau) {
   assert(is_ff_type(ff->ctx->types, tau));
 
   ptr_hmap_pair_t *found = ptr_hmap_get(&ff->lp_datas, tau);
@@ -187,6 +183,18 @@ ff_plugin_field_t* ff_plugin_get_lp_data_by_type(ff_plugin_t *ff, type_t tau) {
   return found->val;
 }
 
+ff_plugin_field_t* ff_plugin_create_or_get_lp_data_by_term(ff_plugin_t *ff, term_t t) {
+  type_t tau = term_type(ff->ctx->terms, t);
+  return ff_plugin_create_or_get_lp_data_by_type(ff, tau);
+}
+
+ff_plugin_field_t* ff_plugin_get_lp_data_by_type(ff_plugin_t *ff, type_t tau) {
+  assert(is_ff_type(ff->ctx->types, tau));
+  ptr_hmap_pair_t *found = ptr_hmap_find(&ff->lp_datas, tau);
+  assert(found);
+  return found->val;
+}
+
 ff_plugin_field_t* ff_plugin_get_lp_data_by_var(ff_plugin_t *ff, variable_t x) {
   type_t tau = variable_db_get_type(ff->ctx->var_db, x);
   return ff_plugin_get_lp_data_by_type(ff, tau);
@@ -194,6 +202,13 @@ ff_plugin_field_t* ff_plugin_get_lp_data_by_var(ff_plugin_t *ff, variable_t x) {
 
 ff_plugin_field_t* ff_plugin_get_lp_data_by_term(ff_plugin_t *ff, term_t t) {
   type_t tau = term_type(ff->ctx->terms, t);
+  return ff_plugin_get_lp_data_by_type(ff, tau);
+}
+
+ff_plugin_field_t* ff_plugin_get_lp_data_by_lp_polynomial(ff_plugin_t *ff, const lp_polynomial_t *p) {
+  const lp_int_ring_t *ring = lp_polynomial_get_context(p)->K;
+  assert(ring != lp_Z);
+  type_t tau = ff_type(ff->ctx->types, &ring->M);
   return ff_plugin_get_lp_data_by_type(ff, tau);
 }
 

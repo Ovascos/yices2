@@ -32,8 +32,8 @@ lp_polynomial_t* lp_polynomial_from_term_ff(ff_plugin_t* ff, term_t t, lp_intege
     ctx_trace_term(ff->ctx, t);
   }
 
-  assert(ff->lp_data);
-  lp_polynomial_t* result = lp_polynomial_from_term(ff->lp_data, t, ff->ctx->terms, c);
+  lp_data_t *lp_data = ff_plugin_get_lp_data_by_term(ff, t)->lp_data;
+  lp_polynomial_t* result = lp_polynomial_from_term(lp_data, t, ff->ctx->terms, c);
 
   if (ctx_trace_enabled(ff->ctx, "ff::terms")) {
     ctx_trace_printf(ff->ctx, "lp_polynomial_from_term: result = ");
@@ -44,15 +44,15 @@ lp_polynomial_t* lp_polynomial_from_term_ff(ff_plugin_t* ff, term_t t, lp_intege
   return result;
 }
 
-term_t lp_polynomial_to_yices_term_ff(ff_plugin_t *ff, const lp_polynomial_t *lp_p) {
+term_t lp_polynomial_to_yices_term_ff(ff_plugin_t *ff, const lp_polynomial_t *lp_p, type_t tau) {
   if (ctx_trace_enabled(ff->ctx, "ff::terms")) {
     ctx_trace_printf(ff->ctx, "lp_polynomial_to_yices_term(");
     lp_polynomial_print(lp_p, ctx_trace_out(ff->ctx));
     ctx_trace_printf(ff->ctx, ")\n");
   }
 
-  assert(ff->lp_data);
-  term_t result = lp_polynomial_to_yices_arith_ff_term(ff->lp_data, lp_p, ff->ctx->terms, &ff->buffer);
+  lp_data_t *lp_data = ff_plugin_get_lp_data_by_type(ff, tau)->lp_data;
+  term_t result = lp_polynomial_to_yices_arith_ff_term(lp_data, lp_p, ff->ctx->terms, &ff->buffer);
 
   if (ctx_trace_enabled(ff->ctx, "ff::terms")) {
     ctx_trace_printf(ff->ctx, "lp_polynomial_to_yices_term(");

@@ -47,6 +47,9 @@ struct ff_plugin_s {
   /** The plugin context */
   plugin_context_t* ctx;
 
+  /** Database of polynomial constraints */
+  poly_constraint_db_t* constraint_db;
+
   /** The watch list manager */
   watch_list_manager_t wlm;
 
@@ -115,13 +118,9 @@ struct ff_plugin_s {
 
 };
 
-// TODO either put WLM here or move constraint_db up?
 struct ff_plugin_field_s {
   /** Data related to libpoly */
   lp_data_t *lp_data;
-
-  /** Database of polynomial constraints */
-  poly_constraint_db_t *constraint_db;
 
   /** Map from variables to their feasible sets */
   ff_feasible_set_db_t *feasible_set_db;
@@ -143,10 +142,16 @@ void ff_plugin_lp_data_gc_mark(ff_plugin_t *ff, gc_info_t* gc_vars);
 
 void ff_plugin_lp_data_gc_sweep(ff_plugin_t *ff, const gc_info_t* gc_vars);
 
-ff_plugin_field_t* ff_plugin_get_lp_data_by_term(ff_plugin_t *ff, term_t t);
+ff_plugin_field_t* ff_plugin_create_or_get_lp_data_by_type(ff_plugin_t *ff, type_t tau);
+
+ff_plugin_field_t* ff_plugin_create_or_get_lp_data_by_term(ff_plugin_t *ff, term_t t);
 
 ff_plugin_field_t* ff_plugin_get_lp_data_by_type(ff_plugin_t *ff, type_t tau);
 
+ff_plugin_field_t* ff_plugin_get_lp_data_by_term(ff_plugin_t *ff, term_t t);
+
 ff_plugin_field_t* ff_plugin_get_lp_data_by_var(ff_plugin_t *ff, variable_t x);
+
+ff_plugin_field_t* ff_plugin_get_lp_data_by_lp_polynomial(ff_plugin_t *ff, const lp_polynomial_t *p);
 
 #endif /* FF_PLUGIN_INTERNAL_H */
