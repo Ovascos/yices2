@@ -1813,7 +1813,7 @@ term_t nra_plugin_explain_propagation(plugin_t* plugin, variable_t var, ivector_
     int_hmap_pair_t *found = int_hmap_find(&nra->propagation_map, var);
     if (found) {
       // degree 1 propagation for L = c*x + d = 0 with constant c
-      // propagate to L => x = c/d
+      // propagate to L => x = -d/c
       variable_t constraint_var = found->val;
       term_t constraint_atom = variable_db_get_term(nra->ctx->var_db, constraint_var);
       const poly_constraint_t *constraint = poly_constraint_db_get(nra->constraint_db, constraint_var);
