@@ -30,8 +30,8 @@ typedef struct nra_plugin_s nra_plugin_t;
  * Explain the core in the conflict. Core is a set of constraint variables,
  * and conflict will a set if terms.
  *
- * pos: set of positive assumptions (to extend the trail)
- * neg: set of negative assumptions (to extend the trail)
+ * @param pos set of positive assumptions (to extend the trail)
+ * @param neg set of negative assumptions (to extend the trail)
  *
  * */
 void nra_plugin_explain_conflict(nra_plugin_t* nra, const int_mset_t* pos, const int_mset_t* neg,

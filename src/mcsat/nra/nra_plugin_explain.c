@@ -822,6 +822,7 @@ void lp_projection_map_reduce(lp_projection_map_t* map, lp_variable_t x, const l
  * Project the content of the map downwards until done. All the projection
  * sets will be closed, so that iteration is possible.
  */
+static
 void lp_projection_map_project(lp_projection_map_t* map, ivector_t* out, int_hset_t* cell_variables) {
 
   // Temps
@@ -922,7 +923,7 @@ void lp_projection_map_project(lp_projection_map_t* map, ivector_t* out, int_hse
       if (p_r_deg > 1 && !p_r_univariate) {
         // Get the derivative
         lp_polynomial_derivative(p_r_d, p_r);
-        // p_r is reduced, but the derivative might not be (the numberical constants)
+        // p_r is reduced, but the derivative might not be (the numerical constants)
         lp_polynomial_pp(p_r_d, p_r_d);
         // Add the projection
         if (map->use_mgcd) {
@@ -1046,11 +1047,10 @@ bool constraint_get_value(const mcsat_trail_t* trail, const int_mset_t* pos, con
 
 /** Try to resolve the two constraints with Fourier-Motzkin resolution */
 static
-bool
-poly_constraint_resolve_fm(nra_plugin_t *nra,
-                           const poly_constraint_t *c0, bool c0_negated,
-                           const poly_constraint_t *c1, bool c1_negated,
-                           ivector_t *out) {
+bool poly_constraint_resolve_fm(nra_plugin_t *nra,
+                                const poly_constraint_t *c0, bool c0_negated,
+                                const poly_constraint_t *c1, bool c1_negated,
+                                ivector_t *out) {
 
   lp_polynomial_context_t* ctx = nra->lp_data.lp_ctx;
   lp_assignment_t* m = nra->lp_data.lp_assignment;
