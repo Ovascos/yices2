@@ -878,8 +878,9 @@ void nra_plugin_process_variable_assignment(nra_plugin_t* nra, trail_token_t* pr
 
   term_t t = variable_db_get_term(nra->ctx->var_db, var);
   if (ctx_trace_enabled(nra->ctx, "nra::propagate")) {
-    ctx_trace_printf(nra->ctx, "nra: processing var assignment of :\n");
+    ctx_trace_printf(nra->ctx, "nra: processing var assignment of :");
     ctx_trace_term(nra->ctx, t);
+    ctx_trace_printf(nra->ctx, "\n");
   }
 
   // If it's constant, just skip it
@@ -892,7 +893,7 @@ void nra_plugin_process_variable_assignment(nra_plugin_t* nra, trail_token_t* pr
   lp_data_add_to_model_and_context(&nra->lp_data, lp_data_get_lp_variable_from_term(&nra->lp_data, t), &trail_get_value(trail, var)->lp_value);
 
   if (ctx_trace_enabled(nra->ctx, "nra::propagate")) {
-    ctx_trace_printf(nra->ctx, "nra: var order :");
+    ctx_trace_printf(nra->ctx, "nra: var order: ");
     lp_data_variable_order_print(&nra->lp_data, ctx_trace_out(nra->ctx));
     ctx_trace_printf(nra->ctx, "\n");
   }
@@ -915,10 +916,10 @@ void nra_plugin_process_variable_assignment(nra_plugin_t* nra, trail_token_t* pr
     variable_t constraint_var = watch_list_manager_get_constraint(&nra->wlm, var_list_ref);
 
     if (ctx_trace_enabled(nra->ctx, "nra::propagate")) {
-      ctx_trace_printf(nra->ctx, "nra: processing constraint :");
+      ctx_trace_printf(nra->ctx, "nra: processing constraint: ");
       ctx_trace_term(nra->ctx, variable_db_get_term(nra->ctx->var_db, constraint_var));
 
-      ctx_trace_printf(nra->ctx, "nra: var_list :");
+      ctx_trace_printf(nra->ctx, "nra: var_list:\n");
       var_list_it = var_list;
       while (*var_list_it != variable_null) {
         ctx_trace_term(nra->ctx, variable_db_get_term(nra->ctx->var_db, *var_list_it));
