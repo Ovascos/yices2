@@ -68,7 +68,7 @@ uint32_t clause_literals_count(mcsat_clause_t* C) {
 }
 
 
-#define INITIAL_CLAUSE_DB_CAPACTIY 10000
+#define INITIAL_CLAUSE_DB_CAPACITY 10000
 
 /** Align the size */
 static inline
@@ -79,8 +79,8 @@ uint32_t align(uint32_t size) {
 void clause_db_construct(clause_db_t* db, const variable_db_t* var_db) {
   db->min_size = align(1);
   db->size = db->min_size;
-  db->capacity = INITIAL_CLAUSE_DB_CAPACTIY;
-  db->memory = safe_malloc(INITIAL_CLAUSE_DB_CAPACTIY);
+  db->capacity = INITIAL_CLAUSE_DB_CAPACITY;
+  db->memory = safe_malloc(INITIAL_CLAUSE_DB_CAPACITY);
 
   init_ivector(&db->clauses, 0);
 

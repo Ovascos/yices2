@@ -18,7 +18,7 @@
 
 /*
  * Anything that includes "yices.h" requires these macros.
- * Otherwise the code doesn't build on Windows or Cygwin.
+ * Otherwise, the code doesn't build on Windows or Cygwin.
  */
 #if defined(CYGWIN) || defined(MINGW)
 #ifndef __YICES_DLLSPEC__
@@ -497,7 +497,7 @@ void nra_plugin_new_term_notify(plugin_t* plugin, term_t t, trail_token_t* prop)
   // We're a constraint if
   bool is_constraint = t_variables.element_list.size != 1 || t_variables.element_list.data[0] != t_var;
 
-  // Setup the constraint
+  // Set up the constraint
   if (is_constraint) {
 
     // Get the list of variables
@@ -814,7 +814,7 @@ void nra_plugin_process_unit_constraint(nra_plugin_t* nra, trail_token_t* prop, 
               }
               nra->ctx->hint_next_decision(nra->ctx, x);
             }
-          }          
+          }
 
         } else if (//variable_db_is_int(nra->ctx->var_db, x) && // turning on for reals as well
                    !lp_feasibility_set_is_full(feasible_set)) {
@@ -829,7 +829,7 @@ void nra_plugin_process_unit_constraint(nra_plugin_t* nra, trail_token_t* prop, 
             // interval distance of an interval [a, b] is defined as log2(|b - a|) + 1.
             // interval distance 1 means that the absolute log2 distance
             // between the upper and lower bound is 1.
-            // Consider the the interval [3,4], the interval distance is 1, and has
+            // Consider the interval [3,4], the interval distance is 1, and has
             // two integer value: 3 and 4.
             // Now consider the interval [5.5, 6.1], the interval distance is 0 and
             // has one integer value: 6. log2(.6) = log2(6) - log2(10).
@@ -1898,7 +1898,7 @@ void nra_plugin_event_notify(plugin_t* plugin, plugin_notify_kind_t kind) {
     // Re-initialize the heuristics
     break;
   case MCSAT_SOLVER_RESTART:
-    // Check if clause compaction needed
+    // Check if-clause compaction needed
     break;
   case MCSAT_SOLVER_CONFLICT:
     // Decay the scores each conflict

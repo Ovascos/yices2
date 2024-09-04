@@ -2137,7 +2137,7 @@ void mcsat_analyze_conflicts(mcsat_solver_t* mcsat, uint32_t* restart_resource) 
       //   - Only one conflict literal contains the top variable.
       //   * weight increases by replacing decision with propagation (M+1)
       // [backjump-decide]
-      //   - More then one conflict literal contains the top variable.
+      //   - More than one conflict literal contains the top variable.
       //   - Top variable is decision t1 -> v
       //   - Replace with decision t2 -> v where t2 is larger than t1
       //   * weight increases by replacing decision with a heavier decision
@@ -2692,7 +2692,7 @@ void mcsat_solve(mcsat_solver_t* mcsat, const param_t *params, model_t* mdl, uin
       assert(is_pos_term(x));
       term_t x_pre = preprocessor_apply(&mcsat->preprocessor, x, NULL, true);
       if (x != x_pre) {
-        // Assert x = t although we solved it already :(
+        // Assert x = t, although we solved it already :(
         term_t eq = mk_eq(&mcsat->tm, x, x_pre);
         mcsat_assert_formulas_internal(mcsat, 1, &eq, false);
       }

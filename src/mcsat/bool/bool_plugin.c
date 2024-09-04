@@ -123,12 +123,12 @@ static
 void bool_plugin_heuristics_init(bool_plugin_t* bp) {
   // Clause scoring
   bp->heuristic_params.clause_score_bump_factor = 1;
-  bp->heuristic_params.clause_score_decay_factor = 0.999;
-  bp->heuristic_params.clause_score_limit = 1e20;
+  bp->heuristic_params.clause_score_decay_factor = 0.999f;
+  bp->heuristic_params.clause_score_limit = 1e20f;
 
   // Clause database compact
   bp->heuristic_params.lemma_limit_init = 1000;
-  bp->heuristic_params.lemma_limit_factor = 1.05;
+  bp->heuristic_params.lemma_limit_factor = 1.05f;
 
   // Bool var scoring
   bp->heuristic_params.bool_var_bump_factor = 5;
@@ -218,6 +218,9 @@ void bool_plugin_new_term_notify(plugin_t* plugin, term_t term, trail_token_t* p
 static
 void bool_plugin_new_lemma_notify(plugin_t* plugin, ivector_t* lemma, trail_token_t* prop) {
   bool_plugin_t* bp = (bool_plugin_t*) plugin;
+
+  // ignored
+  (void)prop;
 
   uint32_t i;
   clause_ref_t clause_ref;
@@ -348,7 +351,7 @@ int bool_plugin_attach_clause(bool_plugin_t* bp, clause_ref_t c_ref, trail_token
   }
 
   // If the first literal at base, it must be true at base making the clause
-  // irellevant
+  // relevant
   if (literal_has_value_at_base(c->literals[0], bp->ctx->trail)) {
     assert(literal_is_true(c->literals[0], bp->ctx->trail));
     return -1;
@@ -533,8 +536,6 @@ void bool_plugin_add_new_clauses(bool_plugin_t* bp, trail_token_t* prop) {
 static
 void bool_plugin_propagate(plugin_t* plugin, trail_token_t* prop) {
   uint32_t k;
-  bool_plugin_t* bp;
-  const mcsat_trail_t* trail;
   variable_t var;
   bool var_value;
   mcsat_literal_t var_lit, var_lit_neg, lit, lit_neg;
@@ -543,8 +544,8 @@ void bool_plugin_propagate(plugin_t* plugin, trail_token_t* prop) {
   mcsat_clause_t* clause;
   bool watch_found;
 
-  bp = (bool_plugin_t*) plugin;
-  trail = bp->ctx->trail;
+  bool_plugin_t *bp = (bool_plugin_t*) plugin;
+  const mcsat_trail_t *trail = bp->ctx->trail;
 
   // Add any new clauses
   bool_plugin_add_new_clauses(bp, prop);
@@ -558,7 +559,7 @@ void bool_plugin_propagate(plugin_t* plugin, trail_token_t* prop) {
   for(; trail_is_consistent(trail) && bp->trail_i < trail_size(trail); ++ bp->trail_i) {
 
     // Current trail element
-    var = trail_at(bp->ctx->trail, bp->trail_i);;
+    var = trail_at(bp->ctx->trail, bp->trail_i);
 
     // Only for Boolean variables
     if (variable_db_is_boolean(bp->ctx->var_db, var)) {
@@ -685,6 +686,9 @@ void bool_plugin_decide(plugin_t* plugin, variable_t x, trail_token_t* decide, b
   bool_plugin_t* bp = (bool_plugin_t*) plugin;
   mcsat_literal_t literal;
 
+  // ignored, always decide
+  (void)must;
+
   assert(!trail_has_value(bp->ctx->trail, x));
 
   if (trail_has_cached_value(bp->ctx->trail, x)) {
@@ -755,7 +759,7 @@ term_t bool_plugin_explain_propagation(plugin_t* plugin, variable_t var, ivector
     }
     ivector_push(reasons, opposite_term(t_i));
 
-    // Bump the reason variable -- give more weightage to boolean reasons
+    // Bump the reason variable -- give more weightages to boolean reasons
     bp->ctx->bump_variable_n(bp->ctx, x_i,
 			     bp->heuristic_params.bool_var_bump_factor);
   }
@@ -969,7 +973,7 @@ void bool_plugin_gc_sweep(plugin_t* plugin, const gc_info_t* gc_vars) {
       bool_plugin_set_reason_ref(bp, var, clause_ref_null);
     } else {
       // The clausal reason for var propagation
-      clause = bp->reason.data[var]; // Getting directly, not a valud reason anymore
+      clause = bp->reason.data[var]; // Getting directly, not a valid reason anymore
       clause_reloc = gc_info_get_reloc(&bp->gc_clauses, clause);
       assert(clause_reloc != clause_ref_null);
       bool_plugin_set_reason_ref(bp, var, clause_reloc);
@@ -1010,7 +1014,7 @@ void bool_plugin_event_notify(plugin_t* plugin, plugin_notify_kind_t kind) {
     bp->lemmas_limit = bp->lemmas.size + bp->heuristic_params.lemma_limit_init;
     break;
   case MCSAT_SOLVER_RESTART:
-    // Check if clause compaction needed
+    // Check if-clause compaction needed
     if (bp->lemmas.size > bp->lemmas_limit) {
       bp->ctx->request_gc(bp->ctx);
       bp->lemmas_limit *= bp->heuristic_params.lemma_limit_factor;
@@ -1022,7 +1026,7 @@ void bool_plugin_event_notify(plugin_t* plugin, plugin_notify_kind_t kind) {
     break;
   case MCSAT_SOLVER_POP:
     // Remove all learnt clauses above base level, regular clauses will be
-    // removed trhough garbage collection
+    // removed through garbage collection
     bool_plugin_remove_stale_clauses(bp);
     break;
   default:

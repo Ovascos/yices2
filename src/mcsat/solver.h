@@ -28,42 +28,42 @@
 
 #include <setjmp.h>
 
-/*
+/**
  * Allocate and construct the solver.
  */
 mcsat_solver_t* mcsat_new(const context_t* ctx);
 
-/*
+/**
  * Destruct the solver.
  */
 void mcsat_destruct(mcsat_solver_t* mcsat);
 
-/*
+/**
  * Returns the status of the solver.
  */
 smt_status_t mcsat_status(const mcsat_solver_t* mcsat);
 
-/*
+/**
  * Remove all assertions.
  */
 void mcsat_reset(mcsat_solver_t* mcsat);
 
-/*
+/**
  * Clear: prepare for more assertions and checks.
  */
 void mcsat_clear(mcsat_solver_t* mcsat);
 
-/*
+/**
  * Push the user context.
  */
 void mcsat_push(mcsat_solver_t* mcsat);
 
-/*
+/**
  * Pop the user context.
  */
 void mcsat_pop(mcsat_solver_t* mcsat);
 
-/*
+/**
  * Assert all formulas f[0] ... f[n-1]. The context status must be IDLE.
  *
  * Return code:
@@ -75,7 +75,7 @@ void mcsat_pop(mcsat_solver_t* mcsat);
  */
 int32_t mcsat_assert_formulas(mcsat_solver_t *mcsat, uint32_t n, const term_t *f);
 
-/*
+/**
  * Set model hint.
  *
  * @param mdl the model to use.
@@ -83,7 +83,7 @@ int32_t mcsat_assert_formulas(mcsat_solver_t *mcsat, uint32_t n, const term_t *f
  */
 void mcsat_set_model_hint(mcsat_solver_t *mcsat, model_t* mdl, uint32_t n, const term_t mdl_filter[]);
 
-/*
+/**
  * Solve asserted constraints module given model.
  *
  * @param params Heuristic parameters. If params is NULL, the default settings
@@ -93,17 +93,17 @@ void mcsat_set_model_hint(mcsat_solver_t *mcsat, model_t* mdl, uint32_t n, const
  */
 void mcsat_solve(mcsat_solver_t* mcsat, const param_t *params, model_t* mdl, uint32_t n, const term_t mdl_filter[]);
 
-/*
+/**
  * Add the model to the yices model
  */
 void mcsat_build_model(mcsat_solver_t* mcsat, model_t* model);
 
-/*
+/**
  * Get model interpolant.
  */
 term_t mcsat_get_unsat_model_interpolant(mcsat_solver_t* mcsat);
 
-/*
+/**
  * Interrupt the search
  * - this can be called after check_context from a signal handler
  * - this interrupts the current search
@@ -116,28 +116,28 @@ term_t mcsat_get_unsat_model_interpolant(mcsat_solver_t* mcsat);
  */
 void mcsat_stop_search(mcsat_solver_t* mcsat);
 
-/*
+/**
  * Set the tracer for the solver.
  */
 void mcsat_set_tracer(mcsat_solver_t* mcsat, tracer_t* tracer);
 
-/*
+/**
  * Show statistics.
  */
 void mcsat_show_stats(mcsat_solver_t* mcsat, FILE* out);
 
-/*
+/**
  * Show statistics: use a file descriptor.
  */
 void mcsat_show_stats_fd(mcsat_solver_t* mcsat, int out);
 
-/*
+/**
  * Mark all terms/types that need to be kept and clear all term
  * caches that might contain unnecessary terms.
  */
 void mcsat_gc_mark(mcsat_solver_t* mcsat);
 
-/*
+/**
  * Set the exception handler. Should be done before, any call into the solver.
  */
 void mcsat_set_exception_handler(mcsat_solver_t* mcsat, jmp_buf* handler);
