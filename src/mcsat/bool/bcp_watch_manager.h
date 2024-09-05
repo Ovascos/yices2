@@ -45,8 +45,7 @@ typedef struct {
 } bcp_watch_list_element_t;
 
 /**
- * Map from each literal to a list of clauses where we're watching this
- * literal.
+ * Map from each literal to a list of clauses where we're watching this literal.
  */
 typedef struct {
 
@@ -79,10 +78,7 @@ void bcp_watch_manager_destruct(bcp_watch_manager_t* wlm);
 /** Notify of a new variable */
 void bcp_watch_manager_new_variable_notify(bcp_watch_manager_t* wlm, variable_t var);
 
-/**
- * Add the given literal
- *
- * variable list to the watch-list of the given watcher variable. */
+/** Add the given literal variable list to the watch-list of the given watcher variable. */
 void bcp_watch_manager_add_to_watch(bcp_watch_manager_t* wlm,
     mcsat_literal_t to_watch, clause_ref_t clause_ref, bool is_binary, mcsat_literal_t blocker);
 

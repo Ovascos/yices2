@@ -84,7 +84,7 @@ mcsat_literal_t literal_construct_from_trail(variable_t x, const mcsat_trail_t* 
   return literal_construct(x, !trail_get_value(trail, x)->b);
 }
 
-/** Return tre level of the literal (must have value != NONE) */
+/** Return the level of the literal (must have value != NONE) */
 static inline
 uint32_t literal_get_level(mcsat_literal_t l, const mcsat_trail_t* trail) {
   assert(trail_has_value(trail, literal_get_variable(l)));

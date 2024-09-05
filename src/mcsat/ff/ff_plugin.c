@@ -18,7 +18,7 @@
 
 /*
  * Anything that includes "yices.h" requires these macros.
- * Otherwise the code doesn't build on Windows or Cygwin.
+ * Otherwise, the code doesn't build on Windows or Cygwin.
  */
 #if defined(CYGWIN) || defined(MINGW)
 #ifndef __YICES_DLLSPEC__

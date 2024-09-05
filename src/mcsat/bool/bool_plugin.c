@@ -790,16 +790,16 @@ bool bool_plugin_explain_evaluation(plugin_t* plugin, term_t t, int_mset_t* vars
       variable_t t1_var = variable_db_get_variable_if_exists(var_db, t1);
       variable_t t2_var = variable_db_get_variable_if_exists(var_db, t2);
       if (t1_var != variable_null && t2_var != variable_null) {
-	if (trail_has_value(trail, t1_var) && trail_has_value(trail, t2_var)) {
-	  bool negated = is_neg_term(t);
-	  const mcsat_value_t* t1_var_value = trail_get_value(trail, t1_var);
-	  const mcsat_value_t* t2_var_value = trail_get_value(trail, t2_var);
-	  if (negated) {
-	    return (t1_var_value->b == t2_var_value->b) != value->b;
-	  } else {
-	    return (t1_var_value->b == t2_var_value->b) == value->b;
-	  }
-	}
+        if (trail_has_value(trail, t1_var) && trail_has_value(trail, t2_var)) {
+          bool negated = is_neg_term(t);
+          const mcsat_value_t* t1_var_value = trail_get_value(trail, t1_var);
+          const mcsat_value_t* t2_var_value = trail_get_value(trail, t2_var);
+          if (negated) {
+            return (t1_var_value->b == t2_var_value->b) != value->b;
+          } else {
+            return (t1_var_value->b == t2_var_value->b) == value->b;
+          }
+        }
       }
     }
     // couldn't evaluate
