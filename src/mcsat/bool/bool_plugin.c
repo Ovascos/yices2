@@ -27,7 +27,14 @@
 #include "utils/int_array_sort2.h"
 #include "mcsat/utils/scope_holder.h"
 
+typedef struct bool_plugin_s bool_plugin_t;
+
 typedef struct {
+  mcsat_clause_info_interface_t info;
+  bool_plugin_t* bp;
+} mcsat_clause_info_t;
+
+struct bool_plugin_s {
 
   /** The plugin interface */
   plugin_t plugin_interface;
@@ -40,6 +47,9 @@ typedef struct {
 
   /** The CNF converter */
   cnf_t cnf;
+
+  /** The clause info */
+  mcsat_clause_info_t clause_info;
 
   /** Clauses that have been added and need to be processed */
   ivector_t clauses_to_add;
@@ -109,7 +119,46 @@ typedef struct {
   /** Exception handler */
   jmp_buf* exception;
 
-} bool_plugin_t;
+};
+
+// clause info implementation
+
+static
+uint32_t clause_info_get_clauses_by_literal(mcsat_clause_info_interface_t* self, mcsat_literal_t l, ivector_t* clauses) {
+  bool_plugin_t *plugin = ((mcsat_clause_info_t*)self)->bp;
+  uint32_t cnt = 0;
+
+  bcp_remove_iterator_t it;
+  bcp_remove_iterator_construct(&it, &plugin->wlm, l);
+  while (!bcp_remove_iterator_done(&it)) {
+    ivector_push(clauses, bcp_remove_iterator_get_watcher(&it)->cref);
+    ++ cnt;
+  }
+  bcp_remove_iterator_destruct(&it);
+  return cnt;
+}
+
+static
+uint32_t clause_info_get_clauses_by_var(mcsat_clause_info_interface_t* self, variable_t v, ivector_t* clauses) {
+  return clause_info_get_clauses_by_literal(self, literal_construct(v, false), clauses)
+       + clause_info_get_clauses_by_literal(self, literal_construct(v, true), clauses);
+}
+
+static
+const mcsat_clause_t* clause_info_get_clause(mcsat_clause_info_interface_t* self, clause_ref_t ref) {
+  bool_plugin_t *plugin = ((mcsat_clause_info_t*)self)->bp;
+  return clause_db_get_clause(&plugin->clause_db, ref);
+}
+
+// init the plugin
+
+static
+void bool_plugin_clause_info_init(mcsat_clause_info_t* info, bool_plugin_t* bp) {
+  info->bp = bp;
+  info->info.get_clause = clause_info_get_clause;
+  info->info.get_clauses_by_literal = clause_info_get_clauses_by_literal;
+  info->info.get_clauses_by_var = clause_info_get_clauses_by_var;
+}
 
 static
 void bool_plugin_stats_init(bool_plugin_t* bp) {
@@ -165,6 +214,7 @@ void bool_plugin_construct(plugin_t* plugin, plugin_context_t* ctx) {
   scope_holder_construct(&bp->scope);
   // CONSTRUCTED ON DEMAND: gc_info_construct(&bp->gc_clauses, clause_ref_null);
 
+  bool_plugin_clause_info_init(&bp->clause_info, bp);
   bool_plugin_stats_init(bp);
   bool_plugin_heuristics_init(bp);
 }
@@ -1042,6 +1092,9 @@ void bool_plugin_decide_assignment(plugin_t* plugin, variable_t x, const mcsat_v
   decide->add(decide, x, value);
 }
 
+const mcsat_clause_info_interface_t* bool_plugin_clause_info(plugin_t* bool_plugin) {
+  return (const mcsat_clause_info_interface_t *) &((bool_plugin_t*) bool_plugin)->clause_info;
+}
 
 plugin_t* bool_plugin_allocator(void) {
   bool_plugin_t* plugin = safe_malloc(sizeof(bool_plugin_t));
