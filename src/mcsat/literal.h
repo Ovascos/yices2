@@ -20,12 +20,14 @@
 #define MCSAT_LITERAL_H_
 
 #include "mcsat/mcsat_types.h"
-#include "mcsat/bool/bool_plugin_types.h"
 
 #include "mcsat/variable_db.h"
 #include "mcsat/trail.h"
 #include "mcsat/value.h"
 #include "mcsat/plugin.h"
+
+/** Literal is just a variable that might be negated */
+typedef int32_t mcsat_literal_t;
 
 #define mcsat_literal_null 0
 
