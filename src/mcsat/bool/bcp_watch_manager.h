@@ -19,7 +19,7 @@
 #ifndef BCP_WATCH_MANAGER_H_
 #define BCP_WATCH_MANAGER_H_
 
-#include "mcsat/bool/literal.h"
+#include "mcsat/literal.h"
 #include "mcsat/bool/clause_db.h"
 #include "utils/int_vectors.h"
 

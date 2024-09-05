@@ -19,19 +19,8 @@
 #ifndef CLAUSE_DB_H_
 #define CLAUSE_DB_H_
 
-#include "mcsat/bool/literal.h"
-
-/**
- * A clause is just a sequence of literals. We keep the literals null
- * terminated. So that we can make the clauses smaller while keeping track of
- * the original size.
- */
-typedef struct {
-  /** Size of the clause (not real size of the vector, see above) */
-  uint32_t size;
-  /** The literals */
-  mcsat_literal_t literals[];
-} mcsat_clause_t;
+#include "mcsat/literal.h"
+#include "mcsat/clause.h"
 
 typedef enum {
   /** This clause is part of a variable definition */
@@ -71,9 +60,6 @@ typedef struct {
   mcsat_clause_t clause;
 
 } mcsat_tagged_clause_t;
-
-/** Null clause */
-#define clause_ref_null 0
 
 /** Clause database type */
 typedef struct clause_db_s clause_db_t;
