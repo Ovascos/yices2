@@ -45,6 +45,29 @@ typedef enum {
   MCSAT_SOLVER_POP
 } plugin_notify_kind_t;
 
+typedef enum {
+  PLUGIN_INFO_NONE = 0,
+  PLUGIN_INFO_CLAUSE,      // mcsat_clause_info_interface_s
+} plugin_info_type_t;
+
+/** used by a plugin to notify the solver of an info it provides */
+typedef struct plugin_info_provider_s {
+  /** the type of info provider the plugin offers */
+  plugin_info_type_t type;
+
+  /** pointer to the provided info */
+  union {
+    struct mcsat_clause_info_interface_s *clause_info;
+  } info;
+} plugin_info_provider_t;
+
+#define PLUGIN_INFO_NULL ((plugin_info_provider_t){ .type = PLUGIN_INFO_NONE, .info = {NULL} })
+
+/** all registered info providers in the solver */
+typedef struct {
+  struct mcsat_clause_info_interface_s *clause_info;
+} plugin_info_t;
+
 /**
  * Context for the plugins, and the interface for plugins to request various features.
  */
@@ -80,6 +103,9 @@ struct plugin_context_s {
   /** The tracer */
   tracer_t* tracer;
 
+  /** info interfaces provided by plugins */
+  const plugin_info_t* plugin_info;
+
   /** Has the search been interrupted */
   const bool* stop_search;
 
@@ -91,6 +117,9 @@ struct plugin_context_s {
 
   /** Request term registration for this type */
   void (*request_term_notification_by_type) (plugin_context_t* self, type_kind_t type);
+
+  /** Register an info provider that the plugin offers */
+  void (*register_plugin_info_provider) (plugin_context_t* self, const plugin_info_provider_t provider);
 
   /** Request a restart */
   void (*request_restart) (plugin_context_t* self);

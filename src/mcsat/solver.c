@@ -239,6 +239,9 @@ struct mcsat_solver_s {
   /** The queue for variable decisions */
   var_queue_t var_queue;
 
+  /** info provider interfaces of the plugins */
+  plugin_info_t plugin_infos;
+
   /** All pending requests */
   struct {
     bool restart;
@@ -735,6 +738,25 @@ void mcsat_plugin_context_decision_calls(plugin_context_t* self, type_kind_t typ
   mctx->mcsat->decision_makers[type] = self->plugin_id;
 }
 
+static
+void mcsat_plugin_register_info_provider(plugin_context_t* self, const plugin_info_provider_t info) {
+  mcsat_solver_t* mcsat = ((mcsat_plugin_context_t*) self)->mcsat;
+
+  switch (info.type) {
+    case PLUGIN_INFO_CLAUSE:
+      assert(mcsat->plugin_infos.clause_info == NULL);
+      mcsat->plugin_infos.clause_info = info.info.clause_info;
+      break;
+
+    case PLUGIN_INFO_NONE:
+      // nothing to register
+      break;
+
+    default:
+      assert(0);
+  }
+}
+
 void mcsat_plugin_context_construct(mcsat_plugin_context_t* ctx, mcsat_solver_t* mcsat, uint32_t plugin_i, const char* plugin_name) {
   ctx->ctx.plugin_id = plugin_i;
   ctx->ctx.var_db = mcsat->var_db;
@@ -746,10 +768,12 @@ void mcsat_plugin_context_construct(mcsat_plugin_context_t* ctx, mcsat_solver_t*
   ctx->ctx.trail = mcsat->trail;
   ctx->ctx.stats = &mcsat->stats;
   ctx->ctx.tracer = mcsat->ctx->trace;
+  ctx->ctx.plugin_info = &mcsat->plugin_infos;
   ctx->ctx.stop_search = &mcsat->stop_search;
   ctx->ctx.request_decision_calls = mcsat_plugin_context_decision_calls;
   ctx->ctx.request_term_notification_by_kind = mcsat_plugin_term_notification_by_kind;
   ctx->ctx.request_term_notification_by_type = mcsat_plugin_term_notification_by_type;
+  ctx->ctx.register_plugin_info_provider = mcsat_plugin_register_info_provider;
   ctx->ctx.request_restart = mcsat_plugin_context_restart;
   ctx->ctx.request_gc = mcsat_plugin_context_gc;
   ctx->ctx.bump_variable = mcsat_plugin_context_bump_variable;
@@ -899,6 +923,9 @@ void mcsat_construct(mcsat_solver_t* mcsat, const context_t* ctx) {
 
   // Construct the preprocessor
   preprocessor_construct(&mcsat->preprocessor, mcsat->terms, mcsat->exception, &mcsat->ctx->mcsat_options);
+
+  // Init info providers
+  mcsat->plugin_infos.clause_info = NULL;
 
   // The variable queue
   init_ivector(&mcsat->top_decision_vars, 0);
