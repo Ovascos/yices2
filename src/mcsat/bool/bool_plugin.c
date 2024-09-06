@@ -132,9 +132,11 @@ uint32_t clause_info_get_clauses_by_literal(mcsat_clause_info_interface_t* self,
   bcp_remove_iterator_construct(&it, &plugin->wlm, l);
   while (!bcp_remove_iterator_done(&it)) {
     ivector_push(clauses, bcp_remove_iterator_get_watcher(&it)->cref);
+    bcp_remove_iterator_next_and_keep(&it);
     ++ cnt;
   }
   bcp_remove_iterator_destruct(&it);
+
   return cnt;
 }
 
@@ -153,11 +155,13 @@ const mcsat_clause_t* clause_info_get_clause(mcsat_clause_info_interface_t* self
 // init the plugin
 
 static
-void bool_plugin_clause_info_init(mcsat_clause_info_t* info, bool_plugin_t* bp) {
+plugin_info_provider_t bool_plugin_clause_info_init(bool_plugin_t* bp) {
+  mcsat_clause_info_t* info = &bp->clause_info;
   info->bp = bp;
   info->info.get_clause = clause_info_get_clause;
   info->info.get_clauses_by_literal = clause_info_get_clauses_by_literal;
   info->info.get_clauses_by_var = clause_info_get_clauses_by_var;
+  return (plugin_info_provider_t){ .type=PLUGIN_INFO_CLAUSE, .info.clause_info=(mcsat_clause_info_interface_t*)info };
 }
 
 static
@@ -211,10 +215,11 @@ void bool_plugin_construct(plugin_t* plugin, plugin_context_t* ctx) {
 
   ctx->request_decision_calls(ctx, BOOL_TYPE);
 
+  ctx->register_plugin_info_provider(ctx, bool_plugin_clause_info_init(bp));
+
   scope_holder_construct(&bp->scope);
   // CONSTRUCTED ON DEMAND: gc_info_construct(&bp->gc_clauses, clause_ref_null);
 
-  bool_plugin_clause_info_init(&bp->clause_info, bp);
   bool_plugin_stats_init(bp);
   bool_plugin_heuristics_init(bp);
 }
@@ -1092,9 +1097,6 @@ void bool_plugin_decide_assignment(plugin_t* plugin, variable_t x, const mcsat_v
   decide->add(decide, x, value);
 }
 
-const mcsat_clause_info_interface_t* bool_plugin_clause_info(plugin_t* bool_plugin) {
-  return (const mcsat_clause_info_interface_t *) &((bool_plugin_t*) bool_plugin)->clause_info;
-}
 
 plugin_t* bool_plugin_allocator(void) {
   bool_plugin_t* plugin = safe_malloc(sizeof(bool_plugin_t));

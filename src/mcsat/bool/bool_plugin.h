@@ -20,11 +20,8 @@
 #define BOOL_PLUGIN_H_
 
 #include "mcsat/plugin.h"
-#include "mcsat/clause.h"
 
 /** Allocate a new bool plugin and setup the plugin-interface method */
 plugin_t* bool_plugin_allocator(void);
-
-const mcsat_clause_info_interface_t* bool_plugin_clause_info(plugin_t* bool_plugin);
 
 #endif /* BOOL_PLUGIN_H_ */
