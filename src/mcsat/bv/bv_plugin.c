@@ -30,6 +30,7 @@
 #include "mcsat/utils/scope_holder.h"
 #include "mcsat/value.h"
 #include "mcsat/unit_info.h"
+#include "mcsat/gc.h"
 
 #include "model/models.h"
 

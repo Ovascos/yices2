@@ -20,7 +20,7 @@
 #define CNF_H_
 
 #include "mcsat/plugin.h"
-#include "mcsat/variable_db.h"
+#include "mcsat/variable.h"
 #include "mcsat/bool/clause_db.h"
 #include "mcsat/utils/int_lset.h"
 

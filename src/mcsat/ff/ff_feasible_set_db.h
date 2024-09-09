@@ -22,7 +22,10 @@
 #include <poly/poly.h>
 #include <poly/integer.h>
 
-#include "mcsat/variable_db.h"
+#include "utils/int_vectors.h"
+
+#include "mcsat/variable.h"
+#include "mcsat/gc.h"
 
 typedef struct ff_plugin_s ff_plugin_t;
 

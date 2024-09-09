@@ -20,7 +20,7 @@
 #define MCSAT_MODEL_H_
 
 #include "mcsat/value.h"
-#include "mcsat/variable_db.h"
+#include "mcsat/variable.h"
 #include "mcsat/mcsat_types.h"
 
 /** The model */

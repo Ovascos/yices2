@@ -18,7 +18,9 @@
 
 #pragma once
 
-#include "mcsat/variable_db.h"
+#include <stddef.h>
+
+#include "mcsat/variable.h"
 #include "mcsat/gc.h"
 #include "utils/int_hash_map.h"
 

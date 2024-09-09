@@ -26,12 +26,9 @@
 #include "utils/int_vectors.h"
 #include "utils/int_hash_map.h"
 
+#include "mcsat/variable.h"
 #include "mcsat/utils/int_mset.h"
 #include "mcsat/gc.h"
-
-typedef int32_t variable_t;
-
-#define variable_null 0
 
 struct variable_db_s {
 

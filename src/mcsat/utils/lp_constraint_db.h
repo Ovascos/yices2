@@ -26,7 +26,7 @@
 #include <poly/sign_condition.h>
 
 #include "mcsat/utils/lp_data.h"
-#include "mcsat/variable_db.h"
+#include "mcsat/variable.h"
 
 /**
  * A constraint of the form sgn(p(x)) = sgn_conition.
