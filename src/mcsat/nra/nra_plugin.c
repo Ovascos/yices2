@@ -878,7 +878,7 @@ void nra_plugin_process_variable_assignment(nra_plugin_t* nra, trail_token_t* pr
 
   term_t t = variable_db_get_term(nra->ctx->var_db, var);
   if (ctx_trace_enabled(nra->ctx, "nra::propagate")) {
-    ctx_trace_printf(nra->ctx, "nra: processing var assignment of :");
+    ctx_trace_printf(nra->ctx, "nra: processing var assignment of: ");
     ctx_trace_term(nra->ctx, t);
     ctx_trace_printf(nra->ctx, "\n");
   }
@@ -1755,7 +1755,7 @@ term_t nra_plugin_explain_propagation(plugin_t* plugin, variable_t var, ivector_
   } else {
     // we just return true => var = value
     // this is only allowed at base level when explaining under assumptions
-    // there is currently no was to assert this properly
+    // there is currently no way to assert this properly
     // assert(trail_is_at_base_level(nra->ctx->trail));
     return mcsat_value_to_term(value, nra->ctx->tm);
   }
