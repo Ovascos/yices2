@@ -351,7 +351,7 @@ int bool_plugin_attach_clause(bool_plugin_t* bp, clause_ref_t c_ref, trail_token
   }
 
   // If the first literal at base, it must be true at base making the clause
-  // relevant
+  // irrelevant
   if (literal_has_value_at_base(c->literals[0], bp->ctx->trail)) {
     assert(literal_is_true(c->literals[0], bp->ctx->trail));
     return -1;
@@ -760,8 +760,7 @@ term_t bool_plugin_explain_propagation(plugin_t* plugin, variable_t var, ivector
     ivector_push(reasons, opposite_term(t_i));
 
     // Bump the reason variable -- give more weightages to boolean reasons
-    bp->ctx->bump_variable_n(bp->ctx, x_i,
-			     bp->heuristic_params.bool_var_bump_factor);
+    bp->ctx->bump_variable_n(bp->ctx, x_i, bp->heuristic_params.bool_var_bump_factor);
   }
 
   // Bump the clause as useful
