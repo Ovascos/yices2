@@ -275,7 +275,7 @@ int_hmap_pair_t *int_hmap_get(int_hmap_t *hmap, int32_t k) {
 
 
 /*
- * Add record [k -> v ] to hmap
+ * Add record [k -> v] to hmap
  * - there must not be a record with the same key
  */
 void int_hmap_add(int_hmap_t *hmap, int32_t k, int32_t v) {
@@ -349,7 +349,7 @@ static const int_hmap_pair_t *int_hmap_get_next(const int_hmap_t *hmap, const in
 
   end = hmap->data + hmap->size;
   while (p < end) {
-    if (p->key != EMPTY_KEY) return p;
+    if (p->key >= 0) return p;
     p ++;
   }
 
@@ -369,7 +369,7 @@ int_hmap_pair_t *int_hmap_first_record(const int_hmap_t *hmap) {
  * Next record after p or NULL
  */
 int_hmap_pair_t *int_hmap_next_record(const int_hmap_t *hmap, const int_hmap_pair_t *p) {
-  assert(p != NULL && p<hmap->data + hmap->size && p->key != EMPTY_KEY);
+  assert(p != NULL && p < hmap->data + hmap->size && p->key >= 0);
   return (int_hmap_pair_t *) int_hmap_get_next(hmap, p+1);
 }
 

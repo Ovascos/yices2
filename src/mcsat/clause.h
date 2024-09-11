@@ -53,18 +53,18 @@ struct mcsat_clause_info_interface_s {
    * Gets watched clauses of variable var. The clauses are returned in the clauses. Returns the number of clauses found.
    * Returns a negative number if there was an error.
    */
-  uint32_t (*get_clauses_by_var) (mcsat_clause_info_interface_t* self, variable_t v, ivector_t* clauses);
+  uint32_t (*get_clauses_by_var) (const mcsat_clause_info_interface_t* self, variable_t v, ivector_t* clauses);
 
   /**
    * Gets watched clauses of literal lit. The clauses are returned in the clauses. Returns the number of clauses found.
    * Returns a negative number if there was an error.
    */
-  uint32_t (*get_clauses_by_literal) (mcsat_clause_info_interface_t* self, mcsat_literal_t l, ivector_t* clauses);
+  uint32_t (*get_clauses_by_literal) (const mcsat_clause_info_interface_t* self, mcsat_literal_t l, ivector_t* clauses);
 
   /**
    * Gets the clause with the given reference.
    */
-  const mcsat_clause_t* (*get_clause) (mcsat_clause_info_interface_t* self, clause_ref_t ref);
+  const mcsat_clause_t* (*get_clause) (const mcsat_clause_info_interface_t* self, clause_ref_t ref);
 
 };
 

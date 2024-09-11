@@ -35,31 +35,31 @@ void constraint_unit_info_gc_sweep(constraint_unit_info_t *unit_info, const gc_i
 }
 
 void constraint_unit_info_set(constraint_unit_info_t *unit_info, variable_t constraint, variable_t unit_var, constraint_unit_state_t value) {
-  int_hmap_pair_t* find = NULL;
-  int_hmap_pair_t* unit_find = NULL;
+  int_hmap_pair_t* find_tag = NULL;
+  int_hmap_pair_t* find_var = NULL;
 
   // Add unit tag
-  find = int_hmap_find(&unit_info->constraint_unit_info, constraint);
-  if (find == NULL) {
+  find_tag = int_hmap_find(&unit_info->constraint_unit_info, constraint);
+  if (find_tag == NULL) {
     // First time, just set
     int_hmap_add(&unit_info->constraint_unit_info, constraint, value);
   } else {
-    assert(find->val != value);
-    find->val = value;
+    assert(find_tag->val != value);
+    find_tag->val = value;
   }
 
   // Add unit variable
-  unit_find = int_hmap_find(&unit_info->constraint_unit_var, constraint);
+  find_var = int_hmap_find(&unit_info->constraint_unit_var, constraint);
   if (value == CONSTRAINT_UNIT) {
-    if (unit_find == NULL) {
+    if (find_var == NULL) {
       int_hmap_add(&unit_info->constraint_unit_var, constraint, unit_var);
     } else {
-      unit_find->val = unit_var;
+      find_var->val = unit_var;
     }
   } else {
     assert(unit_var == variable_null);
-    if (unit_find != NULL) {
-      unit_find->val = variable_null;
+    if (find_var != NULL) {
+      int_hmap_erase(&unit_info->constraint_unit_var, find_var);
     }
   }
 }
