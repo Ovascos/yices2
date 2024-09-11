@@ -67,15 +67,6 @@ struct feasible_set_db_struct {
   /** Size of the updates array, so that we can backtrack */
   uint32_t updates_size;
 
-  /** All variables that were fixed */
-  ivector_t fixed_variables;
-
-  /** Size of the fixed variables array, for backtracking */
-  uint32_t fixed_variable_size;
-
-  /** Index into the fixed variables */
-  uint32_t fixed_variables_i;
-
   /** Scope for push/pop */
   scope_holder_t scope;
 
@@ -171,10 +162,6 @@ feasible_set_db_t* feasible_set_db_new(nra_plugin_t* nra) {
 
   init_int_hmap(&db->var_to_feasible_set_map, 0);
   init_ivector(&db->updates, 0);
-  init_ivector(&db->fixed_variables, 0);
-
-  db->fixed_variable_size = 0;
-  db->fixed_variables_i = 0;
 
   db->updates_size = 0;
 
@@ -194,7 +181,6 @@ void feasible_set_db_delete(feasible_set_db_t* db) {
   // Delete the other stuff
   delete_int_hmap(&db->var_to_feasible_set_map);
   delete_ivector(&db->updates);
-  delete_ivector(&db->fixed_variables);
   scope_holder_destruct(&db->scope);
   // Free the memory
   safe_free(db->memory);
@@ -304,12 +290,6 @@ bool feasible_set_db_update(feasible_set_db_t* db, variable_t x, lp_feasibility_
   db->updates_size ++;
   assert(db->updates_size == db->updates.size);
 
-  // If fixed, put into the fixed array
-  if (lp_feasibility_set_is_point(intersect)) {
-    ivector_push(&db->fixed_variables, x);
-    db->fixed_variable_size ++;
-  }
-
   // Return whether we're feasible
   return feasible;
 }
@@ -317,8 +297,6 @@ bool feasible_set_db_update(feasible_set_db_t* db, variable_t x, lp_feasibility_
 void feasible_set_db_push(feasible_set_db_t* db) {
   scope_holder_push(&db->scope,
     &db->updates_size,
-    &db->fixed_variable_size,
-    &db->fixed_variables_i,
     NULL
   );
 }
@@ -332,13 +310,8 @@ void feasible_set_db_pop(feasible_set_db_t* db) {
 
   scope_holder_pop(&db->scope,
       &db->updates_size,
-      &db->fixed_variable_size,
-      &db->fixed_variables_i,
       NULL
   );
-
-  // Undo fixed variables
-  ivector_shrink(&db->fixed_variables, db->fixed_variable_size);
 
   // Undo updates
   while (db->updates.size > db->updates_size) {
@@ -659,16 +632,6 @@ void feasible_set_db_gc_mark(feasible_set_db_t* db, gc_info_t* gc_vars) {
       }
     }
   }
-}
-
-variable_t feasible_set_db_get_fixed(feasible_set_db_t* db) {
-  for (; db->fixed_variables_i < db->fixed_variables.size; ++ db->fixed_variables_i) {
-    variable_t var = db->fixed_variables.data[db->fixed_variables_i];
-    if (!trail_has_value(db->plugin->ctx->trail, var)) {
-      return var;
-    }
-  }
-  return variable_null;
 }
 
 void feasible_set_db_approximate_value(feasible_set_db_t* db, variable_t constraint_var, lp_interval_t* result) {
