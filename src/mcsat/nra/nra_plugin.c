@@ -36,14 +36,15 @@
 
 #include "mcsat/nra/nra_plugin.h"
 #include "mcsat/nra/nra_plugin_internal.h"
+#include "mcsat/nra/nra_libpoly.h"
+#include "mcsat/nra/nra_plugin_explain.h"
 #include "mcsat/tracing.h"
+#include "mcsat/clause.h"
 #include "mcsat/utils/scope_holder.h"
 #include "mcsat/utils/int_mset.h"
 #include "mcsat/utils/lp_data.h"
 #include "mcsat/utils/lp_utils.h"
 #include "mcsat/watch_list_manager.h"
-#include "mcsat/nra/nra_libpoly.h"
-#include "mcsat/nra/nra_plugin_explain.h"
 
 #include "terms/terms.h"
 #include "terms/term_explorer.h"
@@ -1026,6 +1027,198 @@ bool nra_plugin_check_assignment(nra_plugin_t* nra) {
 }
 #endif
 
+static
+bool nra_plugin_is_clause_univariate(nra_plugin_t* nra, const mcsat_clause_t *c, variable_t x) {
+  const constraint_unit_info_t* unit_info = &nra->unit_info;
+
+  for (uint32_t i = 0; i < c->size && c->literals[i]; ++i) {
+    mcsat_literal_t l = c->literals[i];
+    variable_t var = literal_get_variable(l);
+    // check if literal is already fulfilled by the trail
+    if (literal_is_true(l, nra->ctx->trail)) {
+      return false;
+    }
+    assert(!trail_has_value(nra->ctx->trail, var) || literal_is_false(l, nra->ctx->trail));
+    int_hmap_pair_t *pp = int_hmap_find(&unit_info->constraint_unit_var, var);
+    if (pp == NULL || pp->val != x) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+static
+lp_feasibility_set_t* nra_plugin_clause_feasibility_set(nra_plugin_t* nra, const mcsat_clause_t* c, variable_t x) {
+  const constraint_unit_info_t* unit_info = &nra->unit_info;
+
+  (void)x;
+  assert(nra_plugin_is_clause_univariate(nra, c, x));
+
+  // union feasibility set in x over all constraints of c
+  lp_feasibility_set_t *c_feasible = lp_feasibility_set_new_empty();
+  for (uint32_t i = 0; i < c->size && c->literals[i]; ++i) {
+    mcsat_literal_t l = c->literals[i];
+    variable_t var = literal_get_variable(l);
+    bool is_negated = literal_is_negated(l);
+    int_hmap_pair_t *pp = int_hmap_find(&unit_info->constraint_unit_var, var);
+    assert(pp);
+    assert(pp->val == x);
+    lp_feasibility_set_t *pp_set = nra_plugin_get_feasible_set(nra, var, pp->val, is_negated);
+    lp_feasibility_set_add(c_feasible, pp_set);
+    lp_feasibility_set_delete(pp_set);
+    if (lp_feasibility_set_is_full(c_feasible)) {
+      break;
+    }
+  }
+
+  return c_feasible;
+}
+
+// TODO only run this at base level and on real variable assignments or, better, when a constraint actually became unit
+// TODO rewrite to run for one variable only, collect new unit variables
+// TODO cache per variable in nra state (use second feasible set db?), track clauses that became unit in a queue to be processed here
+static
+void nra_plugin_clause_value_propagation(nra_plugin_t* nra, trail_token_t* prop) {
+  const mcsat_trail_t* trail = nra->ctx->trail;
+  const constraint_unit_info_t* unit_info = &nra->unit_info;
+  const mcsat_clause_info_interface_t* clause_info = nra->ctx->plugin_info->clause_info;
+
+  assert(clause_info);
+  assert(trail_is_consistent(trail));
+
+  int_hmap_pair_t *p_ui = int_hmap_first_record(&unit_info->constraint_unit_var);
+  if (p_ui == NULL) {
+    // nothing to do, don't even initialize data structures
+    return;
+  }
+
+  if (ctx_trace_enabled(nra->ctx, "nra::clause-level")) {
+    ctx_trace_printf(nra->ctx, "processing clause-level assignment\n");
+  }
+
+  // hashmap var -> feasible_set
+  ptr_hmap_t feasible_sets;
+  init_ptr_hmap(&feasible_sets, 0);
+
+  // set of all processed clauses
+  int_hset_t clauses_processed;
+  init_int_hset(&clauses_processed, 0);
+
+  ivector_t clauses;
+  init_ivector(&clauses, 0);
+
+  // for each constraint that is unit in a variable
+  for (int_hmap_pair_t *p = p_ui;
+       p != NULL;
+       p = int_hmap_next_record(&unit_info->constraint_unit_var, p)) {
+
+    variable_t cstr = p->key;
+    variable_t x = p->val;
+
+    // assert that the unit_info is correct
+    assert(!trail_has_value(trail, x));
+
+    // get clauses that contain cstr
+    ivector_reset(&clauses);
+    clause_info->get_clauses_by_var(clause_info, cstr, &clauses);
+
+    // for each clause c of cstr
+    for (uint32_t i = 0; i < clauses.size; ++i) {
+      clause_ref_t clause = clauses.data[i];
+      assert(clause > 0);
+      // check whether clause has already been processed
+      if (!int_hset_add(&clauses_processed, clause)) {
+        continue;
+      }
+
+      const mcsat_clause_t *c = clause_info->get_clause(clause_info, clause);
+      // assert that c is not unit
+      assert(c->size > 1 && c->literals[0] && c->literals[1]);
+      // check that c contains only unit constraints in x
+      if (!nra_plugin_is_clause_univariate(nra, c, x)) {
+        continue;
+      }
+
+      if (ctx_trace_enabled(nra->ctx, "nra::clause-level")) {
+        ctx_trace_printf(nra->ctx, " found clause in ");
+        variable_db_print_variable(nra->ctx->var_db, x, ctx_trace_out(nra->ctx));
+        ctx_trace_printf(nra->ctx, " {");
+        for (uint32_t j = 0; j < c->size && c->literals[j]; ++j) {
+          mcsat_literal_t l = c->literals[j];
+          if (j) ctx_trace_printf(nra->ctx, ", ");
+          if (literal_is_negated(l)) ctx_trace_printf(nra->ctx, "- ");
+          variable_db_print_variable(nra->ctx->var_db, literal_get_variable(l), ctx_trace_out(nra->ctx));
+        }
+        ctx_trace_printf(nra->ctx, "}\n");
+      }
+
+      lp_feasibility_set_t *c_fs = nra_plugin_clause_feasibility_set(nra, c, x);
+
+      // intersect with the current feasible_set of x in hashmap (create if not in hashmap)
+      ptr_hmap_pair_t *fs = ptr_hmap_get(&feasible_sets, x);
+      if (fs->val == NULL) {
+        // start with the feasibility set induced by the trail
+        lp_feasibility_set_t *tmp = feasible_set_db_get(nra->feasible_set_db, x);
+        fs->val = tmp ? lp_feasibility_set_intersect(tmp, c_fs) : lp_feasibility_set_new_copy(c_fs);
+      } else {
+        // use the exising feasible set
+        lp_feasibility_set_t *tmp = fs->val;
+        fs->val = lp_feasibility_set_intersect(tmp, c_fs);
+        lp_feasibility_set_delete(tmp);
+      }
+      lp_feasibility_set_delete(c_fs);
+    }
+  }
+
+  for (ptr_hmap_pair_t *p = ptr_hmap_first_record(&feasible_sets);
+       p != NULL;
+       p = ptr_hmap_next_record(&feasible_sets, p)) {
+    assert(p->val);
+    if (!lp_feasibility_set_is_empty(p->val)) {
+      // we found a solution, get a value
+      lp_value_t x_new_lp_value;
+      lp_value_construct_none(&x_new_lp_value);
+      lp_feasibility_set_pick_value(p->val, &x_new_lp_value);
+      mcsat_value_t x_new_value;
+      mcsat_value_construct_lp_value(&x_new_value, &x_new_lp_value);
+      // hint variable and suggest x_new_value
+      nra->ctx->hint_next_decision(nra->ctx, p->key);
+      nra->ctx->hint_value(nra->ctx, p->key, &x_new_value);
+
+      if (ctx_trace_enabled(nra->ctx, "nra::clause-level")) {
+        ctx_trace_printf(nra->ctx, " hinting ");
+        variable_db_print_variable(nra->ctx->var_db, p->key, ctx_trace_out(nra->ctx));
+        ctx_trace_printf(nra->ctx, ": ");
+        lp_feasibility_set_print(p->val, ctx_trace_out(nra->ctx));
+        ctx_trace_printf(nra->ctx, " -> ");
+        mcsat_value_print(&x_new_value, ctx_trace_out(nra->ctx));
+        ctx_trace_printf(nra->ctx, "\n");
+      }
+
+      // clean up values
+      mcsat_value_destruct(&x_new_value);
+      lp_value_destruct(&x_new_lp_value);
+    } else {
+      // we found a conflict, report the conflict
+      if (ctx_trace_enabled(nra->ctx, "nra::clause-level")) {
+        ctx_trace_printf(nra->ctx, " conflict in ");
+        variable_db_print_variable(nra->ctx->var_db, p->key, ctx_trace_out(nra->ctx));
+      }
+      // TODO how?
+    }
+  }
+
+  // free all feasible sets before deleting the hashmap
+  for (ptr_hmap_pair_t *p = ptr_hmap_first_record(&feasible_sets);
+       p != NULL;
+       p = ptr_hmap_next_record(&feasible_sets, p)) {
+    lp_feasibility_set_delete(p->val);
+  }
+  delete_ptr_hmap(&feasible_sets);
+  delete_int_hset(&clauses_processed);
+  delete_ivector(&clauses);
+}
 
 /**
  * Propagates the trail with BCP. When done, either the trail is fully
@@ -1077,6 +1270,10 @@ void nra_plugin_propagate(plugin_t* plugin, trail_token_t* prop) {
 
   if (trail_is_consistent(trail) && nra->conflict_variable_int != variable_null) {
     nra_plugin_report_int_conflict(nra, prop, nra->conflict_variable_int);
+  }
+
+  if (trail_is_consistent(trail)) {
+    nra_plugin_clause_value_propagation(nra, prop);
   }
 
   assert(nra_plugin_check_assignment(nra));

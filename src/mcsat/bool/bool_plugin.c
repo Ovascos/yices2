@@ -124,7 +124,7 @@ struct bool_plugin_s {
 // clause info implementation
 
 static
-uint32_t clause_info_get_clauses_by_literal(mcsat_clause_info_interface_t* self, mcsat_literal_t l, ivector_t* clauses) {
+uint32_t clause_info_get_clauses_by_literal(const mcsat_clause_info_interface_t* self, mcsat_literal_t l, ivector_t* clauses) {
   bool_plugin_t *plugin = ((mcsat_clause_info_t*)self)->bp;
   uint32_t cnt = 0;
 
@@ -141,13 +141,13 @@ uint32_t clause_info_get_clauses_by_literal(mcsat_clause_info_interface_t* self,
 }
 
 static
-uint32_t clause_info_get_clauses_by_var(mcsat_clause_info_interface_t* self, variable_t v, ivector_t* clauses) {
+uint32_t clause_info_get_clauses_by_var(const mcsat_clause_info_interface_t* self, variable_t v, ivector_t* clauses) {
   return clause_info_get_clauses_by_literal(self, literal_construct(v, false), clauses)
        + clause_info_get_clauses_by_literal(self, literal_construct(v, true), clauses);
 }
 
 static
-const mcsat_clause_t* clause_info_get_clause(mcsat_clause_info_interface_t* self, clause_ref_t ref) {
+const mcsat_clause_t* clause_info_get_clause(const mcsat_clause_info_interface_t* self, clause_ref_t ref) {
   bool_plugin_t *plugin = ((mcsat_clause_info_t*)self)->bp;
   return clause_db_get_clause(&plugin->clause_db, ref);
 }
@@ -1093,6 +1093,8 @@ void bool_plugin_set_exception_handler(plugin_t* plugin, jmp_buf* handler) {
 
 static
 void bool_plugin_decide_assignment(plugin_t* plugin, variable_t x, const mcsat_value_t* value, trail_token_t* decide) {
+  (void) plugin;
+
   // Nothing to do here apart from setting the value
   decide->add(decide, x, value);
 }

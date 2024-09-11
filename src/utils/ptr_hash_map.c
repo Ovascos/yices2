@@ -369,7 +369,7 @@ ptr_hmap_pair_t *ptr_hmap_first_record(const ptr_hmap_t *hmap) {
  * Next record after p or NULL
  */
 ptr_hmap_pair_t *ptr_hmap_next_record(const ptr_hmap_t *hmap, const ptr_hmap_pair_t *p) {
-  assert(p != NULL && p<hmap->data + hmap->size && p->key >= 0);
+  assert(p != NULL && p < hmap->data + hmap->size && p->key >= 0);
   return (ptr_hmap_pair_t *) ptr_hmap_get_next(hmap, p+1);
 }
 
