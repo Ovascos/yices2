@@ -95,6 +95,12 @@ struct nra_plugin_s {
   /** Data related to libpoly */
   lp_data_t lp_data;
 
+  /** Map from variables to their feasible sets according to clauses they are unit in */
+  feasible_set_db_t* clause_hint_feasible_set_db;
+
+  /** constraints that are unit and need to be processed */
+  int_queue_t clause_hint_queue;
+
   /** Buffer for evaluation */
   int_hmap_t evaluation_value_cache;
   int_hmap_t evaluation_timestamp_cache;
