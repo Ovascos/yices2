@@ -47,7 +47,7 @@ typedef struct {
 
 } feasibility_list_element_t;
 
-struct feasible_set_db_struct {
+struct feasible_set_db_s {
 
   /** Elements of the lists */
   feasibility_list_element_t* memory;
@@ -644,4 +644,35 @@ void feasible_set_db_approximate_value(feasible_set_db_t* db, variable_t constra
     lp_interval_swap(&full, result);
     lp_interval_destruct(&full);
   }
+}
+
+void feasible_set_db_iterator_construct(feasible_set_db_iterator_t *it, const feasible_set_db_t *db) {
+  it->db = db;
+  it->pos = int_hmap_first_record(&db->var_to_feasible_set_map);
+}
+
+void feasible_set_db_iterator_destruct(feasible_set_db_iterator_t *it) {
+  // nothing to do
+}
+
+bool feasible_set_db_iterator_done(const feasible_set_db_iterator_t *it) {
+  return it->pos == NULL;
+}
+
+void feasible_set_db_iterator_next(feasible_set_db_iterator_t *it) {
+  assert(it->pos != NULL);
+  it->pos = int_hmap_next_record(&it->db->var_to_feasible_set_map, it->pos);
+}
+
+const lp_feasibility_set_t* feasible_set_db_iterator_get_set(const feasible_set_db_iterator_t *it) {
+  assert(it->pos != NULL);
+  uint32_t index = it->pos->val;
+  assert(index > 0);
+  return it->db->memory[index].feasible_set;
+}
+
+/** Gets the current variable */
+variable_t feasible_set_db_iterator_get_variable(const feasible_set_db_iterator_t *it) {
+  assert(it->pos != NULL);
+  return it->pos->key;
 }

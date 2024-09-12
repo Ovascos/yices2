@@ -28,7 +28,7 @@
 typedef struct nra_plugin_s nra_plugin_t;
 
 /** Contains the map from variables to feasible sets that can be backtracked */
-typedef struct feasible_set_db_struct feasible_set_db_t;
+typedef struct feasible_set_db_s feasible_set_db_t;
 
 /** Create a new database */
 feasible_set_db_t* feasible_set_db_new(nra_plugin_t * ctx);
@@ -70,3 +70,36 @@ void feasible_set_db_gc_mark(feasible_set_db_t* db, gc_info_t* gc_vars);
 
 /** Get an interval approximation of the value */
 void feasible_set_db_approximate_value(feasible_set_db_t* db, variable_t constraint_var, lp_interval_t* result);
+
+
+/**
+ * The iterator for the feasible set db.
+ * An iterator instance must not be used after a database modification.
+ */
+typedef struct {
+
+  /** The feasible set, the iterator is iterating on */
+  const feasible_set_db_t* db;
+
+  /** The reference to the feasible set pair, null when done */
+  const int_hmap_pair_t* pos;
+
+} feasible_set_db_iterator_t;
+
+/** Constructs an iterator for the feasible set db */
+void feasible_set_db_iterator_construct(feasible_set_db_iterator_t *it, const feasible_set_db_t *db);
+
+/** Destructs the iterator */
+void feasible_set_db_iterator_destruct(feasible_set_db_iterator_t *it);
+
+/** Checks if the iterator is finished */
+bool feasible_set_db_iterator_done(const feasible_set_db_iterator_t *it);
+
+/** Proceeds to the next element */
+void feasible_set_db_iterator_next(feasible_set_db_iterator_t *it);
+
+/** Gets the current feasible set */
+const lp_feasibility_set_t* feasible_set_db_iterator_get_set(const feasible_set_db_iterator_t *it);
+
+/** Gets the current variable */
+variable_t feasible_set_db_iterator_get_variable(const feasible_set_db_iterator_t *it);
