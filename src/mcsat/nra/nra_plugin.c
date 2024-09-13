@@ -442,6 +442,11 @@ bool nra_plugin_clause_value_process_unit_constraint(nra_plugin_t* nra, variable
   variable_t x = constraint_unit_info_get_unit_var(&nra->unit_info, constraint);
   assert(x != variable_null);
 
+  // Disable for integer variables for now
+  if (variable_db_is_int(nra->ctx->var_db, x)) {
+    return false;
+  }
+
   if (ctx_trace_enabled(nra->ctx, "nra::clause-level")) {
     ctx_trace_printf(nra->ctx, " tracking new unit constraint (%u) in ", constraint);
     variable_db_print_variable(nra->ctx->var_db, x, ctx_trace_out(nra->ctx));
@@ -574,6 +579,7 @@ void nra_plugin_clause_value_generate_hints(nra_plugin_t* nra) {
         // hint variable and suggest x_new_value
         nra->ctx->hint_next_decision(nra->ctx, x);
         nra->ctx->hint_value(nra->ctx, x, &x_new_value);
+        // TODO evaluate removing of cached values (via pop)
         empty = false;
 
         if (ctx_trace_enabled(nra->ctx, "nra::clause-level")) {
