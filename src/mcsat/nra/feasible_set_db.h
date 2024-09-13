@@ -44,6 +44,9 @@ void feasible_set_db_delete(feasible_set_db_t* db);
  */
 bool feasible_set_db_update(feasible_set_db_t* db, variable_t x, lp_feasibility_set_t* new_set, const variable_t* reasons, uint32_t reasons_count);
 
+/** Checks if constraint cstr is (part of) a reason for variable x */
+bool feasible_set_db_contains_reason(feasible_set_db_t* db, variable_t x, variable_t cstr);
+
 /** Get the feasible set of a variable */
 lp_feasibility_set_t* feasible_set_db_get(feasible_set_db_t* db, variable_t x);
 

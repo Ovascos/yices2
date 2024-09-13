@@ -205,6 +205,20 @@ void ff_feasible_set_db_ensure_memory(feasible_set_db_t* db) {
   assert(db->memory_size < db->memory_capacity);
 }
 
+/** Checks if constraint cstr is (part of) a reason for variable x */
+bool feasible_set_db_contains_reason(feasible_set_db_t* db, variable_t x, variable_t cstr) {
+  uint32_t index = feasible_set_db_get_index(db, x);
+  while (index) {
+    feasibility_list_element_t *e = db->memory + index;
+    for (int i = 0; i < e->reasons_size; ++i) {
+      if (e->reasons[i] == cstr)
+        return true;
+    }
+    index = e->prev;
+  }
+  return false;
+}
+
 /** Update the feasible set of the variable with a new set */
 bool feasible_set_db_update(feasible_set_db_t* db, variable_t x, lp_feasibility_set_t* new_set, const variable_t* cstr_list, uint32_t cstr_count) {
 

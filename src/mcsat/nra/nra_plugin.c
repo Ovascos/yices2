@@ -443,7 +443,7 @@ bool nra_plugin_clause_value_process_unit_constraint(nra_plugin_t* nra, variable
   assert(x != variable_null);
 
   if (ctx_trace_enabled(nra->ctx, "nra::clause-level")) {
-    ctx_trace_printf(nra->ctx, " tracking new unit constraint in ");
+    ctx_trace_printf(nra->ctx, " tracking new unit constraint (%u) in ", constraint);
     variable_db_print_variable(nra->ctx->var_db, x, ctx_trace_out(nra->ctx));
     ctx_trace_printf(nra->ctx, ": ");
     variable_db_print_variable(nra->ctx->var_db, constraint, ctx_trace_out(nra->ctx));
@@ -461,10 +461,17 @@ bool nra_plugin_clause_value_process_unit_constraint(nra_plugin_t* nra, variable
   for (uint32_t i = 0; i < clauses.size; ++i) {
 
     clause_ref_t clause = clauses.data[i];
+
+    // skip if the clause had already been processed
+    if (feasible_set_db_contains_reason(nra->clause_hint_feasible_set_db, x, clause)) {
+      continue;
+    }
+
     const mcsat_clause_t *c = clause_info->get_clause(clause_info, clause);
 
     // assert that c is not empty or unit
     assert(c->literals[0] && c->literals[1]);
+
     // check that c contains only unit constraints in x
     if (!nra_plugin_is_clause_univariate(nra, c, x)) {
       continue;
@@ -491,8 +498,6 @@ bool nra_plugin_clause_value_process_unit_constraint(nra_plugin_t* nra, variable
 
     lp_feasibility_set_t *c_fs = nra_plugin_clause_feasibility_set(nra, c, x);
 
-    // TODO think about double processed clauses
-    // TODO test assert that clause is not yet a reason of x's set (double processed clauses)
     bool feasible = feasible_set_db_update(nra->clause_hint_feasible_set_db, x, c_fs, &clause, 1);
     if (!feasible) {
       break;
