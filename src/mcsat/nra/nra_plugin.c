@@ -602,6 +602,7 @@ void nra_plugin_clause_value_generate_hints(nra_plugin_t* nra) {
       if (ctx_trace_enabled(nra->ctx, "nra::clause-level")) {
         ctx_trace_printf(nra->ctx, " conflict in ");
         variable_db_print_variable(nra->ctx->var_db, x, ctx_trace_out(nra->ctx));
+        ctx_trace_printf(nra->ctx, "\n");
       }
       // TODO how?
     }
@@ -1409,6 +1410,7 @@ void nra_plugin_decide(plugin_t* plugin, variable_t x, trail_token_t* decide_tok
       variable_db_print_variable(nra->ctx->var_db, x, ctx_trace_out(nra->ctx));
       ctx_trace_printf(nra->ctx, "[%d]: ", x);
       if (using_cached) {
+        ctx_trace_printf(nra->ctx, "(cached) ");
         mcsat_value_print(x_cached_value, ctx_trace_out(nra->ctx));
       } else {
         lp_value_print(&x_new_lpvalue, ctx_trace_out(nra->ctx));
@@ -2054,6 +2056,10 @@ void nra_plugin_push(plugin_t* plugin) {
       &nra->processed_variables_size,
       NULL);
 
+  if (ctx_trace_enabled(nra->ctx, "nra::push-pop")) {
+    ctx_trace_printf(nra->ctx, " --- push (%d) ---\n", nra->ctx->trail->decision_level);
+  }
+
   lp_data_variable_order_push(&nra->lp_data);
   feasible_set_db_push(nra->feasible_set_db);
   feasible_set_db_push(nra->clause_hint_feasible_set_db);
@@ -2064,6 +2070,10 @@ void nra_plugin_pop(plugin_t* plugin) {
 
   nra_plugin_t* nra = (nra_plugin_t*) plugin;
   const mcsat_trail_t* trail = nra->ctx->trail;
+
+  if (ctx_trace_enabled(nra->ctx, "nra::push-pop")) {
+    ctx_trace_printf(nra->ctx, " --- pop (%d) ---\n", nra->ctx->trail->decision_level);
+  }
 
   if (ctx_trace_enabled(nra->ctx, "nra::conflict")) {
     trail_print(trail, ctx_trace_out(nra->ctx));
