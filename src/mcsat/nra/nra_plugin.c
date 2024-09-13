@@ -442,11 +442,6 @@ bool nra_plugin_clause_value_process_unit_constraint(nra_plugin_t* nra, variable
   variable_t x = constraint_unit_info_get_unit_var(&nra->unit_info, constraint);
   assert(x != variable_null);
 
-  // Disable for integer variables for now
-  if (variable_db_is_int(nra->ctx->var_db, x)) {
-    return false;
-  }
-
   if (ctx_trace_enabled(nra->ctx, "nra::clause-level")) {
     ctx_trace_printf(nra->ctx, " tracking new unit constraint (%u) in ", constraint);
     variable_db_print_variable(nra->ctx->var_db, x, ctx_trace_out(nra->ctx));
@@ -514,6 +509,45 @@ bool nra_plugin_clause_value_process_unit_constraint(nra_plugin_t* nra, variable
 }
 
 static
+bool nra_plugin_clause_value_get(nra_plugin_t* nra, variable_t x, lp_value_t *value) {
+  lp_feasibility_set_t *set = feasible_set_db_get(nra->clause_hint_feasible_set_db, x);
+  assert(int_queue_is_empty(&nra->clause_hint_queue));
+
+  if (!set || lp_feasibility_set_is_empty(set)) {
+    return false;
+  }
+
+  const lp_feasibility_set_t *set_trail = feasible_set_db_get(nra->feasible_set_db, x);
+  if (set_trail && lp_feasibility_set_is_empty(set_trail)) {
+    return false;
+  }
+
+  lp_feasibility_set_t *tmp = set;
+  if (set_trail) {
+    tmp = lp_feasibility_set_intersect(set, set_trail);
+    if (lp_feasibility_set_is_empty(tmp)) {
+      lp_feasibility_set_delete(tmp);
+      return false;
+    }
+  }
+
+  // we found a solution, get a value
+  lp_feasibility_set_pick_value(tmp, value);
+
+  if (tmp != set) {
+    lp_feasibility_set_delete(tmp);
+  }
+
+  if (variable_db_is_int(nra->ctx->var_db, x) && !lp_value_is_integer(value)) {
+    lp_value_assign_zero(value);
+    return false;
+  }
+
+  return true;
+}
+
+
+static
 void nra_plugin_clause_value_generate_hints(nra_plugin_t* nra) {
   if (ctx_trace_enabled(nra->ctx, "nra::clause-level")) {
     ctx_trace_printf(nra->ctx, "clause-level: generating hints\n");
@@ -578,7 +612,7 @@ void nra_plugin_clause_value_generate_hints(nra_plugin_t* nra) {
 
         // hint variable and suggest x_new_value
         nra->ctx->hint_next_decision(nra->ctx, x);
-        nra->ctx->hint_value(nra->ctx, x, &x_new_value);
+        //nra->ctx->hint_value(nra->ctx, x, &x_new_value);
         // TODO evaluate removing of cached values (via pop)
         empty = false;
 
@@ -1383,8 +1417,13 @@ void nra_plugin_decide(plugin_t* plugin, variable_t x, trail_token_t* decide_tok
     }
   }
 
-  // If the set is 0, we can pick any value, including 0
-  if (!using_cached && feasible != NULL) {
+  bool using_clause_level = false;
+  if (!using_cached) {
+    using_clause_level = nra_plugin_clause_value_get(nra, x, &x_new_lpvalue);
+  }
+
+  // If the set is NULL, we can pick any value, including 0
+  if (!using_cached && !using_clause_level && feasible != NULL) {
     // Otherwise pick from the set
     lp_feasibility_set_pick_value(feasible, &x_new_lpvalue);
   }
@@ -1413,6 +1452,7 @@ void nra_plugin_decide(plugin_t* plugin, variable_t x, trail_token_t* decide_tok
         ctx_trace_printf(nra->ctx, "(cached) ");
         mcsat_value_print(x_cached_value, ctx_trace_out(nra->ctx));
       } else {
+        if (using_clause_level) ctx_trace_printf(nra->ctx, "(clause-level-hint) ");
         lp_value_print(&x_new_lpvalue, ctx_trace_out(nra->ctx));
       }
       ctx_trace_printf(nra->ctx, "\n");
