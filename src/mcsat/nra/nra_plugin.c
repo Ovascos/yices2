@@ -432,11 +432,10 @@ void nra_plugin_clause_value_track_unit_constraint(nra_plugin_t* nra, variable_t
 
 static
 bool nra_plugin_clause_value_process_unit_constraint(nra_plugin_t* nra, variable_t constraint) {
-  const mcsat_trail_t* trail = nra->ctx->trail;
   const mcsat_clause_info_interface_t* clause_info = nra->ctx->plugin_info->clause_info;
 
   assert(clause_info);
-  assert(trail_is_consistent(trail));
+  assert(trail_is_consistent(nra->ctx->trail));
   assert(constraint_unit_info_get(&nra->unit_info, constraint) == CONSTRAINT_UNIT);
 
   variable_t x = constraint_unit_info_get_unit_var(&nra->unit_info, constraint);
