@@ -560,9 +560,19 @@ void nra_plugin_clause_value_generate_hints(nra_plugin_t* nra) {
   // Process new uint clauses
   while (!int_queue_is_empty(&nra->clause_hint_queue)) {
     variable_t constraint = int_queue_pop(&nra->clause_hint_queue);
+    constraint_unit_state_t s = constraint_unit_info_get(&nra->unit_info, constraint);
+    if (s != CONSTRAINT_UNIT) {
+      continue;
+    }
     if (trail_has_value(nra->ctx->trail, constraint)) {
       continue;
     }
+    // TODO check if this implies constraint_unit
+    const poly_constraint_t* cstr = poly_constraint_db_get(nra->constraint_db, constraint);
+    if (!poly_constraint_is_valid(cstr)) {
+      continue;
+    }
+
     variable_t x = constraint_unit_info_get_unit_var(&nra->unit_info, constraint);
     // assert that constraint univariate
     assert(x != variable_null);
@@ -2098,6 +2108,8 @@ void nra_plugin_push(plugin_t* plugin) {
   if (ctx_trace_enabled(nra->ctx, "nra::push-pop")) {
     ctx_trace_printf(nra->ctx, " --- push (%d) ---\n", nra->ctx->trail->decision_level);
   }
+
+  assert(int_queue_is_empty(&nra->clause_hint_queue));
 
   lp_data_variable_order_push(&nra->lp_data);
   feasible_set_db_push(nra->feasible_set_db);
