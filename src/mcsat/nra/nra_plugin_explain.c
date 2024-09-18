@@ -1045,6 +1045,84 @@ bool constraint_get_value(const mcsat_trail_t* trail, const int_mset_t* pos, con
   return false;
 }
 
+
+////////////////////////////
+// start yices call
+////////////////////////////
+
+#include "yices.h"
+#include "api/yices_api_lock_free.h"
+#include "context/context.h"
+
+static
+context_t *new_yices_context(plugin_context_t *ctx) {
+  context_t *y_ctx;
+
+  y_ctx = safe_malloc(sizeof(context_t));
+  init_context(y_ctx, ctx->terms, QF_LRA, CTX_MODE_ONECHECK, CTX_ARCH_SPLX, false);
+  // default options
+  //enable_variable_elimination(y_ctx);
+  //enable_diseq_and_or_flattening(y_ctx);
+
+  assert(context_status(y_ctx) == STATUS_IDLE);
+  return y_ctx;
+}
+
+static
+void free_yices_context(context_t *y_ctx) {
+  delete_context(y_ctx);
+  free(y_ctx);
+}
+
+static inline
+void yices_assert_term(context_t* solver, variable_t assertion_term) {
+#if 0
+  if (ctx_trace_enabled(solver->ctx, "mcsat::bv::conflict")) {
+    FILE* out = trace_out(solver->yices_ctx->trace);
+    ctx_trace_term(solver->ctx, assertion_term);
+    fprintf(out, "  previously \n");
+    ctx_trace_term(solver->ctx, assertion_term);
+  }
+#endif
+  // TODO change to context_process_assertions (and also in BV)
+  // TODO check if one single assertion is/can already (be) unsat
+  _o_yices_assert_formula(solver, assertion_term);
+}
+
+static inline
+bool yices_check(context_t* solver) {
+  if (context_status(solver) == STATUS_UNSAT) {
+    return false;
+  }
+  smt_status_t status = _o_yices_check_context_with_assumptions(solver, NULL, 0, NULL);
+  assert(status == STATUS_SAT || status == STATUS_UNSAT);
+  return status == STATUS_SAT;
+}
+
+////////////////////////////
+// end yices call
+////////////////////////////
+
+/** Try to use simplex to prove the unsatisfiability of the constraints */
+// TODO add cache (c1, c2, n1, n2) -> bool or verify that every pair is only explained once
+static
+bool poly_constraint_resolve_simplex(nra_plugin_t *nra,
+                                     variable_t c0_var, bool c0_negated,
+                                     variable_t c1_var, bool c1_negated) {
+
+  term_t t0 = variable_db_get_term(nra->ctx->var_db, c0_var);
+  term_t t1 = variable_db_get_term(nra->ctx->var_db, c1_var);
+  t0 = c0_negated ? opposite_term(t0) : t0;
+  t1 = c1_negated ? opposite_term(t1) : t1;
+
+  context_t *y_ctx = new_yices_context(nra->ctx);
+  yices_assert_term(y_ctx, t0);
+  yices_assert_term(y_ctx, t1);
+  bool sat = yices_check(y_ctx);
+  free_yices_context(y_ctx);
+  return !sat;
+}
+
 /** Try to resolve the two constraints with Fourier-Motzkin resolution */
 static
 bool poly_constraint_resolve_fm(nra_plugin_t *nra,
@@ -1054,19 +1132,6 @@ bool poly_constraint_resolve_fm(nra_plugin_t *nra,
 
   lp_polynomial_context_t* ctx = nra->lp_data.lp_ctx;
   lp_assignment_t* m = nra->lp_data.lp_assignment;
-
-  if (poly_constraint_is_root_constraint(c0) || poly_constraint_is_root_constraint(c1)) {
-    return false;
-  }
-
-  if (ctx_trace_enabled(nra->ctx, "mcsat::nra::explain")) {
-    ctx_trace_printf(nra->ctx, "c0 %s: ", c0_negated ? "(negated)" : "");
-    poly_constraint_print(c0, ctx_trace_out(nra->ctx));
-    ctx_trace_printf(nra->ctx, "\n");
-    ctx_trace_printf(nra->ctx, "c1 %s: ", c1_negated ? "(negated)" : "");
-    poly_constraint_print(c1, ctx_trace_out(nra->ctx));
-    ctx_trace_printf(nra->ctx, "\n");
-  }
 
   lp_polynomial_vector_t* assumptions = lp_polynomial_vector_new(ctx);
 
@@ -1136,8 +1201,60 @@ bool poly_constraint_resolve_fm(nra_plugin_t *nra,
   return ok;
 }
 
+static
+bool nra_plugin_explain_conflict_try_linear(nra_plugin_t *nra,
+                                            variable_t c0_var, bool c0_negated,
+                                            variable_t c1_var, bool c1_negated,
+                                            ivector_t *conflict) {
+
+  const poly_constraint_t* c0 = poly_constraint_db_get(nra->constraint_db, c0_var);
+  const poly_constraint_t* c1 = poly_constraint_db_get(nra->constraint_db, c1_var);
+
+  if (poly_constraint_is_root_constraint(c0) || poly_constraint_is_root_constraint(c1)) {
+    return false;
+  }
+
+  if (!poly_constraint_is_linear(c0) || !poly_constraint_is_linear(c1)) {
+    return false;
+  }
+
+  if (ctx_trace_enabled(nra->ctx, "mcsat::nra::explain")) {
+    ctx_trace_printf(nra->ctx, "c0 %s: ", c0_negated ? "(negated)" : "");
+    poly_constraint_print(c0, ctx_trace_out(nra->ctx));
+    ctx_trace_printf(nra->ctx, "\n");
+    ctx_trace_printf(nra->ctx, "c1 %s: ", c1_negated ? "(negated)" : "");
+    poly_constraint_print(c1, ctx_trace_out(nra->ctx));
+    ctx_trace_printf(nra->ctx, "\n");
+  }
+
+  bool unsat = poly_constraint_resolve_simplex(nra, c0_var, c0_negated, c1_var, c1_negated);
+  if (unsat) {
+    term_t c0_term = variable_db_get_term(nra->ctx->var_db, c0_var);
+    if (c0_negated) c0_term = opposite_term(c0_term);
+    term_t c1_term = variable_db_get_term(nra->ctx->var_db, c1_var);
+    if (c1_negated) c1_term = opposite_term(c1_term);
+    ivector_push(conflict, c0_term);
+    ivector_push(conflict, c1_term);
+    return true;
+  }
+
+#if 0
+  bool resolved = poly_constraint_resolve_fm(nra, c0, c0_negated, c1, c1_negated, conflict);
+  if (resolved) {
+    term_t c0_term = variable_db_get_term(nra->ctx->var_db, c0_var);
+    if (c0_negated) c0_term = opposite_term(c0_term);
+    term_t c1_term = variable_db_get_term(nra->ctx->var_db, c1_var);
+    if (c1_negated) c1_term = opposite_term(c1_term);
+    ivector_push(conflict, c0_term);
+    ivector_push(conflict, c1_term);
+    return;
+  }
+#endif
+  return false;
+}
+
 void nra_plugin_explain_conflict(nra_plugin_t* nra, const int_mset_t* pos, const int_mset_t* neg,
-    const ivector_t* core, const ivector_t* lemma_reasons, ivector_t* conflict) {
+                                 const ivector_t* core, const ivector_t* lemma_reasons, ivector_t* conflict) {
 
   if (ctx_trace_enabled(nra->ctx, "nra::explain")) {
     ctx_trace_printf(nra->ctx, "nra_plugin_explain_conflict()\n");
@@ -1165,22 +1282,13 @@ void nra_plugin_explain_conflict(nra_plugin_t* nra, const int_mset_t* pos, const
     int_mset_destruct(&variables);
   }
 
-  // Check if there is a simple Fourier-Motzkin explanation
-  if (false && core->size == 2 && lemma_reasons->size == 0) {
+  if (core->size == 2 && lemma_reasons->size == 0) {
     variable_t c0_var = core->data[0];
     variable_t c1_var = core->data[1];
     bool c0_negated = !constraint_get_value(nra->ctx->trail, pos, neg, c0_var);
     bool c1_negated = !constraint_get_value(nra->ctx->trail, pos, neg, c1_var);
-    const poly_constraint_t* c0 = poly_constraint_db_get(nra->constraint_db, c0_var);
-    const poly_constraint_t* c1 = poly_constraint_db_get(nra->constraint_db, c1_var);
-    bool resolved = poly_constraint_resolve_fm(nra, c0, c0_negated, c1, c1_negated, conflict);
-    if (resolved) {
-      term_t c0_term = variable_db_get_term(nra->ctx->var_db, c0_var);
-      if (c0_negated) c0_term = opposite_term(c0_term);
-      term_t c1_term = variable_db_get_term(nra->ctx->var_db, c1_var);
-      if (c1_negated) c1_term = opposite_term(c1_term);
-      ivector_push(conflict, c0_term);
-      ivector_push(conflict, c1_term);
+
+    if (nra_plugin_explain_conflict_try_linear(nra, c0_var, c0_negated, c1_var, c1_negated, conflict)) {
       return;
     }
   }

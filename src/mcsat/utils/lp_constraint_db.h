@@ -137,6 +137,9 @@ bool poly_constraint_is_valid(const poly_constraint_t* cstr);
 /** Check if the constraint is unit */
 bool poly_constraint_is_unit(const poly_constraint_t* cstr, const lp_assignment_t* M);
 
+/** Checks if the constraint is linear in all variables */
+bool poly_constraint_is_linear(const poly_constraint_t* cstr);
+
 /** Get the top variable of the constraint */
 lp_variable_t poly_constraint_get_top_variable(const poly_constraint_t* cstr);
 

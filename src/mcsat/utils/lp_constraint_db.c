@@ -304,6 +304,10 @@ bool poly_constraint_is_unit(const poly_constraint_t* cstr, const lp_assignment_
   return result;
 }
 
+bool poly_constraint_is_linear(const poly_constraint_t* cstr) {
+  return lp_polynomial_is_linear(cstr->polynomial);
+}
+
 bool poly_constraint_db_has(poly_constraint_db_t* db, variable_t constraint_var) {
   return int_hmap_find(&db->var_to_constraint_map, constraint_var) != NULL;
 }
