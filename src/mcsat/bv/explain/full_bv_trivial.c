@@ -124,7 +124,7 @@ bv_subexplainer_t* full_bv_trivial_new(plugin_context_t* ctx, watch_list_manager
 
   bv_subexplainer_t* exp = safe_malloc(sizeof(bv_subexplainer_t));
 
-  // Construct the supert
+  // Construct the supertype
   bv_subexplainer_construct(exp, "mcsat::bv::explain::full_bv_trivial", ctx, wlm, eval);
 
   // Setup calls

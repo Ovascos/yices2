@@ -817,7 +817,7 @@ term_t arith_normalise_upto(arith_norm_t* norm, term_t u, uint32_t w){
       }
     }
 
-    // Now we fill-in preproc[1][*], preproc[2][*], preproc[3][*], normalising recursively
+    // Now we fill in preproc[1][*], preproc[2][*], preproc[3][*], normalising recursively
     for (uint32_t i = 0; i < w; i++) {
       if (preproc[0][i] != NULL_TERM) {
         uint32_t size = preproc[1][i] + 1;

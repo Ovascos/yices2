@@ -39,7 +39,7 @@
 
 typedef struct eq_ext_con_s {
 
-  /** Interfact of the subexplainer */
+  /** Interface of the subexplainer */
   bv_subexplainer_t super;
   bv_csttrail_t csttrail; // Where we keep some cached values
   int_hmap_t cache; // Cache of terms that can be treated by this explainer
