@@ -1238,7 +1238,9 @@ bool nra_plugin_explain_conflict_try_linear(nra_plugin_t *nra,
     return true;
   }
 
-#if 0
+  // don't do fm
+  return false;
+
   bool resolved = poly_constraint_resolve_fm(nra, c0, c0_negated, c1, c1_negated, conflict);
   if (resolved) {
     term_t c0_term = variable_db_get_term(nra->ctx->var_db, c0_var);
@@ -1247,9 +1249,9 @@ bool nra_plugin_explain_conflict_try_linear(nra_plugin_t *nra,
     if (c1_negated) c1_term = opposite_term(c1_term);
     ivector_push(conflict, c0_term);
     ivector_push(conflict, c1_term);
-    return;
+    return true;
   }
-#endif
+
   return false;
 }
 

@@ -187,14 +187,6 @@ void bb_sat_solver_assert_var(bb_sat_solver_t* solver, variable_t var) {
 }
 
 static
-bool bb_sat_solver_cmp_var_by_trail_index(void *data, variable_t t1, variable_t t2) {
-  const mcsat_trail_t* trail = data;
-  assert(trail_has_value(trail, t1));
-  assert(trail_has_value(trail, t2));
-  return trail_get_index(trail, t1) < trail_get_index(trail, t2);
-}
-
-static
 bool bb_sat_solver_cmp_bit_term(void *data, term_t t1, term_t t2) {
   term_table_t* terms = (term_table_t*) data;
 
