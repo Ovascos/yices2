@@ -609,35 +609,27 @@ void nra_plugin_clause_value_generate_hints(nra_plugin_t* nra) {
 
     bool empty = true;
     if (!lp_feasibility_set_is_empty(set)) {
-      // we found a solution, get a value
-      lp_value_t x_new_lp_value;
-      lp_value_construct_none(&x_new_lp_value);
-      lp_feasibility_set_pick_value(set, &x_new_lp_value);
-
-      // don't suggest non-integer values for int variables
-      if (!variable_db_is_int(nra->ctx->var_db, x) || lp_value_is_integer(&x_new_lp_value)) {
-        mcsat_value_t x_new_value;
-        mcsat_value_construct_lp_value(&x_new_value, &x_new_lp_value);
-
-        // hint variable and suggest x_new_value
-        nra->ctx->hint_next_decision(nra->ctx, x);
-        //nra->ctx->hint_value(nra->ctx, x, &x_new_value);
-        // TODO evaluate removing of cached values (via pop)
+      if (!variable_db_is_int(nra->ctx->var_db, x)) {
         empty = false;
-
-        if (ctx_trace_enabled(nra->ctx, "nra::clause-level")) {
-          ctx_trace_printf(nra->ctx, " hinting ");
-          variable_db_print_variable(nra->ctx->var_db, x, ctx_trace_out(nra->ctx));
-          ctx_trace_printf(nra->ctx, ": ");
-          lp_feasibility_set_print(set, ctx_trace_out(nra->ctx));
-          ctx_trace_printf(nra->ctx, " -> ");
-          mcsat_value_print(&x_new_value, ctx_trace_out(nra->ctx));
-          ctx_trace_printf(nra->ctx, "\n");
+        if (lp_feasibility_set_is_point(set)) {
+          // hint the variable
+          nra->ctx->hint_next_decision(nra->ctx, x);
         }
-
-        mcsat_value_destruct(&x_new_value);
+      } else {
+        // check if it is an int solution before hinting
+        lp_value_t x_new_lp_value;
+        lp_value_construct_none(&x_new_lp_value);
+        lp_feasibility_set_pick_value(set, &x_new_lp_value);
+        if (lp_value_is_integer(&x_new_lp_value)) {
+          empty = false;
+          if (lp_feasibility_set_is_point(set)) {
+            // it's the only solution,
+            // TODO this could be better: check if it's the only *integer* solution
+            nra->ctx->hint_next_decision(nra->ctx, x);
+          }
+        }
+        lp_value_destruct(&x_new_lp_value);
       }
-      lp_value_destruct(&x_new_lp_value);
     }
 
     if (empty) {
