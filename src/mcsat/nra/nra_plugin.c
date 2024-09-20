@@ -202,8 +202,9 @@ bool nra_plugin_trail_variable_compare(void *data, variable_t t1, variable_t t2)
   return trail_variable_compare((const mcsat_trail_t *)data, t1, t2);
 }
 
+/** Calculates the feasible set for a constraint */
 static
-lp_feasibility_set_t* nra_plugin_get_feasible_set(nra_plugin_t* nra, variable_t cstr_var, variable_t cstr_top_var, bool is_negated) {
+lp_feasibility_set_t* nra_plugin_get_feasible_set_of_constraint(nra_plugin_t* nra, variable_t cstr_var, variable_t cstr_top_var, bool is_negated) {
   // TODO:
   // 1. cache
   // 2. negation
@@ -413,7 +414,8 @@ lp_feasibility_set_t* nra_plugin_clause_feasibility_set(nra_plugin_t* nra, const
     }
     variable_t constraint = literal_get_variable(l);
     bool is_negated = literal_is_negated(l);
-    lp_feasibility_set_t *constraint_feasible = nra_plugin_get_feasible_set(nra, constraint, x, is_negated);
+    lp_feasibility_set_t *constraint_feasible = nra_plugin_get_feasible_set_of_constraint(nra, constraint, x,
+                                                                                          is_negated);
     lp_feasibility_set_add(clause_feasible, constraint_feasible);
     lp_feasibility_set_delete(constraint_feasible);
     if (lp_feasibility_set_is_full(clause_feasible)) {
@@ -507,44 +509,27 @@ bool nra_plugin_clause_value_process_unit_constraint(nra_plugin_t* nra, variable
   return found;
 }
 
+/** Gets the feasible set of a variable by combining trail and clause-level feasible sets
+ *  @return a copy of the feasible set to be freed by the caller or NULL if both are NULL */
 static
-bool nra_plugin_clause_value_get(nra_plugin_t* nra, variable_t x, lp_value_t *value) {
-  lp_feasibility_set_t *set = feasible_set_db_get(nra->clause_hint_feasible_set_db, x);
+lp_feasibility_set_t* nra_plugin_get_feasible_set(nra_plugin_t* nra, variable_t x) {
+  // assume that all hints have been processed
   assert(int_queue_is_empty(&nra->clause_hint_queue));
 
-  if (!set || lp_feasibility_set_is_empty(set)) {
-    return false;
+  const lp_feasibility_set_t
+        *set_trail = feasible_set_db_get(nra->feasible_set_db, x),
+        *set_hints = feasible_set_db_get(nra->clause_hint_feasible_set_db, x);
+
+  if (set_trail == NULL && set_hints == NULL) { return NULL; }
+  if (set_hints == NULL) { return lp_feasibility_set_new_copy(set_trail); }
+  if (set_trail == NULL) { return lp_feasibility_set_new_copy(set_hints); }
+
+  if (lp_feasibility_set_is_empty(set_trail) || lp_feasibility_set_is_empty(set_hints)) {
+    return lp_feasibility_set_new_empty();
   }
 
-  const lp_feasibility_set_t *set_trail = feasible_set_db_get(nra->feasible_set_db, x);
-  if (set_trail && lp_feasibility_set_is_empty(set_trail)) {
-    return false;
-  }
-
-  lp_feasibility_set_t *tmp = set;
-  if (set_trail) {
-    tmp = lp_feasibility_set_intersect(set, set_trail);
-    if (lp_feasibility_set_is_empty(tmp)) {
-      lp_feasibility_set_delete(tmp);
-      return false;
-    }
-  }
-
-  // we found a solution, get a value
-  lp_feasibility_set_pick_value(tmp, value);
-
-  if (tmp != set) {
-    lp_feasibility_set_delete(tmp);
-  }
-
-  if (variable_db_is_int(nra->ctx->var_db, x) && !lp_value_is_integer(value)) {
-    lp_value_assign_zero(value);
-    return false;
-  }
-
-  return true;
+  return lp_feasibility_set_intersect(set_trail, set_hints);
 }
-
 
 static
 void nra_plugin_clause_value_generate_hints(nra_plugin_t* nra) {
@@ -1051,7 +1036,8 @@ void nra_plugin_process_unit_constraint(nra_plugin_t* nra, trail_token_t* prop, 
     assert(x != variable_null);
 
     bool is_negated = !constraint_value;
-    lp_feasibility_set_t* constraint_feasible = nra_plugin_get_feasible_set(nra, constraint_var, x, is_negated);
+    lp_feasibility_set_t* constraint_feasible = nra_plugin_get_feasible_set_of_constraint(nra, constraint_var, x,
+                                                                                          is_negated);
 
     if (ctx_trace_enabled(nra->ctx, "nra::propagate")) {
       ctx_trace_printf(nra->ctx, "nra: constraint_feasible = ");
@@ -1386,7 +1372,7 @@ void nra_plugin_decide(plugin_t* plugin, variable_t x, trail_token_t* decide_tok
   assert(variable_db_is_real(nra->ctx->var_db, x) || variable_db_is_int(nra->ctx->var_db, x));
 
   // Get the feasibility set
-  const lp_feasibility_set_t* feasible = feasible_set_db_get(nra->feasible_set_db, x);
+  lp_feasibility_set_t* feasible = nra_plugin_get_feasible_set(nra, x);
 
   if (ctx_trace_enabled(nra->ctx, "nra::decide")) {
     ctx_trace_printf(nra->ctx, "decide on ");
@@ -1418,13 +1404,8 @@ void nra_plugin_decide(plugin_t* plugin, variable_t x, trail_token_t* decide_tok
     }
   }
 
-  bool using_clause_level = false;
-  if (!using_cached) {
-    using_clause_level = nra_plugin_clause_value_get(nra, x, &x_new_lpvalue);
-  }
-
   // If the set is NULL, we can pick any value, including 0
-  if (!using_cached && !using_clause_level && feasible != NULL) {
+  if (!using_cached && feasible != NULL) {
     // Otherwise pick from the set
     lp_feasibility_set_pick_value(feasible, &x_new_lpvalue);
   }
@@ -1444,7 +1425,6 @@ void nra_plugin_decide(plugin_t* plugin, variable_t x, trail_token_t* decide_tok
   }
 
   if (decide) {
-
     if (ctx_trace_enabled(nra->ctx, "nra::decide")) {
       ctx_trace_printf(nra->ctx, "decided on ");
       variable_db_print_variable(nra->ctx->var_db, x, ctx_trace_out(nra->ctx));
@@ -1453,7 +1433,6 @@ void nra_plugin_decide(plugin_t* plugin, variable_t x, trail_token_t* decide_tok
         ctx_trace_printf(nra->ctx, "(cached) ");
         mcsat_value_print(x_cached_value, ctx_trace_out(nra->ctx));
       } else {
-        if (using_clause_level) ctx_trace_printf(nra->ctx, "(clause-level-hint) ");
         lp_value_print(&x_new_lpvalue, ctx_trace_out(nra->ctx));
       }
       ctx_trace_printf(nra->ctx, "\n");
@@ -1481,6 +1460,7 @@ void nra_plugin_decide(plugin_t* plugin, variable_t x, trail_token_t* decide_tok
   }
 
   lp_value_destruct(&x_new_lpvalue);
+  if (feasible != NULL) { lp_feasibility_set_delete(feasible); }
 }
 
 /**
@@ -1671,7 +1651,7 @@ bool nra_plugin_speculate_constraint(nra_plugin_t* nra, int_mset_t* pos, int_mse
   }
 
   // Compute the feasible set
-  lp_feasibility_set_t* constraint_feasible = nra_plugin_get_feasible_set(nra, constraint_var, x, negated);
+  lp_feasibility_set_t* constraint_feasible = nra_plugin_get_feasible_set_of_constraint(nra, constraint_var, x, negated);
 
   // Update the infeasible intervals
   bool feasible = feasible_set_db_update(nra->feasible_set_db, x, constraint_feasible, &constraint_var, 1);
@@ -2293,7 +2273,8 @@ void nra_plugin_new_lemma_notify(plugin_t* plugin, ivector_t* lemma, trail_token
       bool negated = constraint_term != literal_term;
 
       // Compute and add the feasible set
-      lp_feasibility_set_t* constraint_feasible = nra_plugin_get_feasible_set(nra, constraint_var, unit_var, negated);
+      lp_feasibility_set_t* constraint_feasible = nra_plugin_get_feasible_set_of_constraint(nra, constraint_var,
+                                                                                            unit_var, negated);
 
       if (ctx_trace_enabled(nra->ctx, "nra::lemma")) {
         ctx_trace_printf(nra->ctx, "nra: constraint_feasible = ");
