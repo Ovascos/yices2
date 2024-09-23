@@ -514,7 +514,8 @@ bool nra_plugin_clause_value_process_unit_constraint(nra_plugin_t* nra, variable
 static
 lp_feasibility_set_t* nra_plugin_get_feasible_set(nra_plugin_t* nra, variable_t x) {
   // assume that all hints have been processed
-  assert(int_queue_is_empty(&nra->clause_hint_queue));
+  // TODO check why this does not hold
+  //assert(int_queue_is_empty(&nra->clause_hint_queue));
 
   const lp_feasibility_set_t
         *set_trail = feasible_set_db_get(nra->feasible_set_db, x),
@@ -1010,6 +1011,141 @@ void nra_plugin_infer_bounds_from_constraint(nra_plugin_t* nra, trail_token_t* p
   }
 }
 
+static
+bool nra_plugin_process_variable_feasibility(nra_plugin_t* nra, trail_token_t *prop, variable_t x, const lp_feasibility_set_t *feasible_set) {
+  assert(variable_db_is_real(nra->ctx->var_db, x));
+
+  if (lp_feasibility_set_is_empty(feasible_set)) {
+    return true;
+  }
+
+  if (trail_has_value(nra->ctx->trail, x)) {
+    // there is already a value, nothing to hint
+    return false;
+  }
+
+  lp_value_t x_value;
+  lp_value_construct_none(&x_value);
+  lp_feasibility_set_pick_value(feasible_set, &x_value);
+
+  if (lp_feasibility_set_is_point(feasible_set)) {
+    if (lp_value_is_rational(&x_value)) {
+      if (trail_is_at_base_level(nra->ctx->trail) && !nra->ctx->options->model_interpolation) {
+        mcsat_value_t value;
+        mcsat_value_construct_lp_value(&value, &x_value);
+        prop->add_at_level(prop, x, &value, nra->ctx->trail->decision_level_base);
+        mcsat_value_destruct(&value);
+      } else {
+        if (ctx_trace_enabled(nra->ctx, "nra::propagate")) {
+          ctx_trace_printf(nra->ctx, "nra: hinting variable = %d\n", x);
+        }
+        nra->ctx->hint_next_decision(nra->ctx, x);
+      }
+    }
+  } else if (!lp_feasibility_set_is_full(feasible_set)) {
+    lp_interval_t x_interval;
+    lp_interval_construct_full(&x_interval); // [-inf, +inf]
+    // now we over-approx the feasible set using an interval and
+    // the result is stored in x_interval, e.g., [1.6, 2.5]
+    // union [4.2, 4.6] is approximated by [1.6, 4.6].
+    feasible_set_db_approximate_value(nra->feasible_set_db, x, &x_interval);
+    int interval_dist = lp_interval_size_approx(&x_interval);
+    if (interval_dist <= 1) {
+      // interval distance of an interval [a, b] is defined as log2(|b - a|) + 1.
+      // interval distance 1 means that the absolute log2 distance
+      // between the upper and lower bound is 1.
+      // Consider the interval [3,4], the interval distance is 1, and has
+      // two integer value: 3 and 4.
+      // Now consider the interval [5.5, 6.1], the interval distance is 0 and
+      // has one integer value: 6. log2(.6) = log2(6) - log2(10).
+      // Here, we are hinting to the main mcsat solver to decide on this variable
+      // as the possible integer values for the variable is highly likely one.
+      if (lp_value_is_integer(&x_value)) {
+        // it is good idea to decide on this variable (integers or reals)
+        if (ctx_trace_enabled(nra->ctx, "nra::propagate")) {
+          ctx_trace_printf(nra->ctx, "nra: hinting variable = %d\n", x);
+        }
+        nra->ctx->hint_next_decision(nra->ctx, x);
+      }
+    }
+    lp_interval_destruct(&x_interval);
+  }
+
+  lp_value_destruct(&x_value);
+  return false;
+}
+
+static
+bool nra_plugin_process_variable_feasibility_int(nra_plugin_t* nra, trail_token_t *prop, variable_t x, const lp_feasibility_set_t *feasible_set) {
+  assert(variable_db_is_int(nra->ctx->var_db, x));
+
+  if (lp_feasibility_set_is_empty(feasible_set)) {
+    return true;
+  }
+
+  lp_value_t x_value;
+  lp_value_construct_none(&x_value);
+  lp_feasibility_set_pick_value(feasible_set, &x_value);
+
+  bool x_in_conflict = false;
+  // TODO change this to lp_feasibility_set_has_int_value
+  if (!lp_value_is_integer(&x_value)) {
+    // no integer value
+    x_in_conflict = true;
+    goto done;
+  }
+
+  if (trail_has_value(nra->ctx->trail, x)) {
+    // there is already a value, nothing to hint
+    x_in_conflict = false;
+    goto done;
+  }
+
+  // TODO use integer version to check if this is the only int solution
+  if (lp_feasibility_set_is_point(feasible_set)) {
+    // x_value is the only solution
+    if (trail_is_at_base_level(nra->ctx->trail) && !nra->ctx->options->model_interpolation) {
+      mcsat_value_t value;
+      mcsat_value_construct_lp_value(&value, &x_value);
+      prop->add_at_level(prop, x, &value, nra->ctx->trail->decision_level_base);
+      mcsat_value_destruct(&value);
+    } else {
+      if (ctx_trace_enabled(nra->ctx, "nra::propagate")) {
+        ctx_trace_printf(nra->ctx, "nra: hinting variable = %d\n", x);
+      }
+      nra->ctx->hint_next_decision(nra->ctx, x);
+    }
+  } else if (!lp_feasibility_set_is_full(feasible_set)) {
+    lp_interval_t x_interval;
+    lp_interval_construct_full(&x_interval); // [-inf, +inf]
+    // now we over-approx the feasible set using an interval and
+    // the x_in_conflict is stored in x_interval, e.g., [1.6, 2.5]
+    // union [4.2, 4.6] is approximated by [1.6, 4.6].
+    feasible_set_db_approximate_value(nra->feasible_set_db, x, &x_interval);
+    int interval_dist = lp_interval_size_approx(&x_interval);
+    if (interval_dist <= 1) {
+      // interval distance of an interval [a, b] is defined as log2(|b - a|) + 1.
+      // interval distance 1 means that the absolute log2 distance
+      // between the upper and lower bound is 1.
+      // Consider the interval [3,4], the interval distance is 1, and has
+      // two integer value: 3 and 4.
+      // Now consider the interval [5.5, 6.1], the interval distance is 0 and
+      // has one integer value: 6. log2(.6) = log2(6) - log2(10).
+      // Here, we are hinting to the main mcsat solver to decide on this variable
+      // as the possible integer values for the variable is highly likely one.
+      // it is good idea to decide on this variable (integers or reals)
+      if (ctx_trace_enabled(nra->ctx, "nra::propagate")) {
+        ctx_trace_printf(nra->ctx, "nra: hinting variable = %d\n", x);
+      }
+      nra->ctx->hint_next_decision(nra->ctx, x);
+    }
+    lp_interval_destruct(&x_interval);
+  }
+
+done:
+  lp_value_destruct(&x_value);
+  return x_in_conflict;
+}
 
 static
 void nra_plugin_process_unit_constraint(nra_plugin_t* nra, trail_token_t* prop, variable_t constraint_var) {
@@ -1058,70 +1194,32 @@ void nra_plugin_process_unit_constraint(nra_plugin_t* nra, trail_token_t* prop, 
     if (!still_feasible) {
       nra_plugin_report_conflict(nra, prop, x);
     } else {
+      // TODO get information from clause level reasoning as well which could be empty, but, for now, we don't trigger conflicts in this case
       const lp_feasibility_set_t *feasible_set = feasible_set_db_get(nra->feasible_set_db, x);
-      bool x_in_conflict = false;
-      lp_value_t x_value;
-      lp_value_construct_none(&x_value);
-      lp_feasibility_set_pick_value(feasible_set, &x_value);
+      lp_feasibility_set_t *feasible_set_hint = nra_plugin_get_feasible_set(nra, x);
 
-      // If the variable is integer, check that is has an integer solution
+      bool conflict, conflict_hint;
       if (variable_db_is_int(nra->ctx->var_db, x)) {
-        // Check if there is an integer value
-        if (!lp_value_is_integer(&x_value)) {
-          if (nra->conflict_variable_int == variable_null) {
-            nra->conflict_variable_int = x;
+        // try with hints
+        conflict_hint = nra_plugin_process_variable_feasibility_int(nra, prop, x, feasible_set_hint);
+        if (conflict_hint) {
+          // try without hints
+          conflict = nra_plugin_process_variable_feasibility_int(nra, prop, x, feasible_set);
+          if (conflict) {
+            if (nra->conflict_variable_int == variable_null) {
+              nra->conflict_variable_int = x;
+            }
           }
-          x_in_conflict = true;
+        }
+      } else {
+        conflict_hint = nra_plugin_process_variable_feasibility(nra, prop, x, feasible_set_hint);
+        if (conflict_hint) {
+          conflict = nra_plugin_process_variable_feasibility(nra, prop, x, feasible_set);
+          assert(!conflict);
         }
       }
 
-      if (!x_in_conflict && !trail_has_value(nra->ctx->trail, x)) {
-        if (lp_feasibility_set_is_point(feasible_set)) {
-          if (lp_value_is_rational(&x_value)) {
-            if (trail_is_at_base_level(nra->ctx->trail) && !nra->ctx->options->model_interpolation) {
-              mcsat_value_t value;
-              mcsat_value_construct_lp_value(&value, &x_value);
-              prop->add_at_level(prop, x, &value, nra->ctx->trail->decision_level_base);
-              mcsat_value_destruct(&value);
-            } else {
-              if (ctx_trace_enabled(nra->ctx, "nra::propagate")) {
-                ctx_trace_printf(nra->ctx, "nra: hinting variable = %d\n", x);
-              }
-              nra->ctx->hint_next_decision(nra->ctx, x);
-            }
-          }
-
-        } else if (//variable_db_is_int(nra->ctx->var_db, x) && // turning on for reals as well
-                   !lp_feasibility_set_is_full(feasible_set)) {
-          lp_interval_t x_interval;
-          lp_interval_construct_full(&x_interval); // [-inf, +inf]
-          // now we over-approx the feasible set using an interval and
-          // the result is stored in x_interval, e.g., [1.6, 2.5]
-          // union [4.2, 4.6] is approximated by [1.6, 4.6].
-          feasible_set_db_approximate_value(nra->feasible_set_db, x, &x_interval);
-          int interval_dist = lp_interval_size_approx(&x_interval);
-          if (interval_dist <= 1) {
-            // interval distance of an interval [a, b] is defined as log2(|b - a|) + 1.
-            // interval distance 1 means that the absolute log2 distance
-            // between the upper and lower bound is 1.
-            // Consider the interval [3,4], the interval distance is 1, and has
-            // two integer value: 3 and 4.
-            // Now consider the interval [5.5, 6.1], the interval distance is 0 and
-            // has one integer value: 6. log2(.6) = log2(6) - log2(10).
-            // Here, we are hinting to the main mcsat solver to decide on this variable
-            // as the possible integer values for the variable is highly likely one.
-            if (lp_value_is_integer(&x_value)) {
-              // it is good idea to decide on this variable (integers or reals)
-              if (ctx_trace_enabled(nra->ctx, "nra::propagate")) {
-                ctx_trace_printf(nra->ctx, "nra: hinting variable = %d\n", x);
-              }
-              nra->ctx->hint_next_decision(nra->ctx, x);
-            }
-          }
-          lp_interval_destruct(&x_interval);
-        }
-      }
-      lp_value_destruct(&x_value);
+      lp_feasibility_set_delete(feasible_set_hint);
     }
   }
 }
@@ -1373,7 +1471,15 @@ void nra_plugin_decide(plugin_t* plugin, variable_t x, trail_token_t* decide_tok
   assert(variable_db_is_real(nra->ctx->var_db, x) || variable_db_is_int(nra->ctx->var_db, x));
 
   // Get the feasibility set
-  lp_feasibility_set_t* feasible = nra_plugin_get_feasible_set(nra, x);
+  lp_feasibility_set_t* feasible_actual = nra_plugin_get_feasible_set(nra, x);
+
+  // Currently, feasible can be empty, as clause level reasoning does not raise conflicts, yet.
+  // We use the feasible set of the trail in this case.
+  const lp_feasibility_set_t* feasible = feasible_actual;
+  if (feasible_actual != NULL && (lp_feasibility_set_is_empty(feasible_actual)
+    || (variable_db_is_int(nra->ctx->var_db, x) && !lp_feasibility_set_contains_int(feasible_actual)))) {
+      feasible = feasible_set_db_get(nra->feasible_set_db, x);
+  }
 
   if (ctx_trace_enabled(nra->ctx, "nra::decide")) {
     ctx_trace_printf(nra->ctx, "decide on ");
@@ -1457,7 +1563,7 @@ void nra_plugin_decide(plugin_t* plugin, variable_t x, trail_token_t* decide_tok
   }
 
   lp_value_destruct(&x_new_lpvalue);
-  if (feasible != NULL) { lp_feasibility_set_delete(feasible); }
+  if (feasible_actual != NULL) { lp_feasibility_set_delete(feasible_actual); }
 }
 
 /**
