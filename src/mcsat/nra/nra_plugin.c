@@ -516,14 +516,6 @@ lp_feasibility_set_t* nra_plugin_get_feasible_set(nra_plugin_t* nra, variable_t 
   // assume that all hints have been processed
   assert(int_queue_is_empty(&nra->clause_hint_queue));
 
-#if 1
-  const lp_feasibility_set_t *set_trail = feasible_set_db_get(nra->feasible_set_db, x);
-
-  if (set_trail)
-    return lp_feasibility_set_new_copy(set_trail);
-
-  return NULL;
-# else
   const lp_feasibility_set_t
         *set_trail = feasible_set_db_get(nra->feasible_set_db, x),
         *set_hints = feasible_set_db_get(nra->clause_hint_feasible_set_db, x);
@@ -537,7 +529,6 @@ lp_feasibility_set_t* nra_plugin_get_feasible_set(nra_plugin_t* nra, variable_t 
   }
 
   return lp_feasibility_set_intersect(set_trail, set_hints);
-#endif
 }
 
 static
@@ -1373,8 +1364,19 @@ void nra_plugin_decide(plugin_t* plugin, variable_t x, trail_token_t* decide_tok
 
   assert(variable_db_is_real(nra->ctx->var_db, x) || variable_db_is_int(nra->ctx->var_db, x));
 
-  // Get the feasibility set
-  lp_feasibility_set_t* feasible = nra_plugin_get_feasible_set(nra, x);
+  // Try to pick a value that is also clause-level compatible
+  lp_feasibility_set_t *feasible_clause = nra_plugin_get_feasible_set(nra, x);
+
+  lp_feasibility_set_t *feasible;
+  bool is_int_var = variable_db_is_int(nra->ctx->var_db, x);
+  if (feasible_clause == NULL) {
+    feasible = NULL;
+  } else if (lp_feasibility_set_is_empty(feasible_clause) || (is_int_var && !lp_feasibility_set_contains_int(feasible_clause))) {
+    feasible = feasible_set_db_get(nra->feasible_set_db, x);
+    assert(feasible == NULL || !lp_feasibility_set_is_empty(feasible));
+  } else {
+    feasible = feasible_clause;
+  }
 
   if (ctx_trace_enabled(nra->ctx, "nra::decide")) {
     ctx_trace_printf(nra->ctx, "decide on ");
@@ -1462,7 +1464,7 @@ void nra_plugin_decide(plugin_t* plugin, variable_t x, trail_token_t* decide_tok
   }
 
   lp_value_destruct(&x_new_lpvalue);
-  if (feasible != NULL) { lp_feasibility_set_delete(feasible); }
+  if (feasible_clause != NULL) { lp_feasibility_set_delete(feasible_clause); }
 }
 
 /**
