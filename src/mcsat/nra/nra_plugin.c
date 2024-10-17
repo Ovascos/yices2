@@ -516,6 +516,14 @@ lp_feasibility_set_t* nra_plugin_get_feasible_set(nra_plugin_t* nra, variable_t 
   // assume that all hints have been processed
   assert(int_queue_is_empty(&nra->clause_hint_queue));
 
+#if 1
+  const lp_feasibility_set_t *set_trail = feasible_set_db_get(nra->feasible_set_db, x);
+
+  if (set_trail)
+    return lp_feasibility_set_new_copy(set_trail);
+
+  return NULL;
+# else
   const lp_feasibility_set_t
         *set_trail = feasible_set_db_get(nra->feasible_set_db, x),
         *set_hints = feasible_set_db_get(nra->clause_hint_feasible_set_db, x);
@@ -529,6 +537,7 @@ lp_feasibility_set_t* nra_plugin_get_feasible_set(nra_plugin_t* nra, variable_t 
   }
 
   return lp_feasibility_set_intersect(set_trail, set_hints);
+#endif
 }
 
 static
@@ -593,27 +602,20 @@ void nra_plugin_clause_value_generate_hints(nra_plugin_t* nra) {
     assert(set);
 
     bool empty = true;
-    if (!lp_feasibility_set_is_empty(set)) {
-      if (!variable_db_is_int(nra->ctx->var_db, x)) {
+    if (variable_db_is_real(nra->ctx->var_db, x)) {
+      if (!lp_feasibility_set_is_empty(set)) {
         empty = false;
         if (lp_feasibility_set_is_point(set)) {
-          // hint the variable
           nra->ctx->hint_next_decision(nra->ctx, x);
         }
-      } else {
-        // check if it is an int solution before hinting
-        lp_value_t x_new_lp_value;
-        lp_value_construct_none(&x_new_lp_value);
-        lp_feasibility_set_pick_value(set, &x_new_lp_value);
-        if (lp_value_is_integer(&x_new_lp_value)) {
-          empty = false;
-          if (lp_feasibility_set_is_point(set)) {
-            // it's the only solution,
-            // TODO this could be better: check if it's the only *integer* solution
-            nra->ctx->hint_next_decision(nra->ctx, x);
-          }
+      }
+    } else {
+      assert(variable_db_is_int(nra->ctx->var_db, x));
+      if (lp_feasibility_set_contains_int(set)) {
+        empty = false;
+        if (lp_feasibility_set_is_point_int(set)) {
+          nra->ctx->hint_next_decision(nra->ctx, x);
         }
-        lp_value_destruct(&x_new_lp_value);
       }
     }
 
