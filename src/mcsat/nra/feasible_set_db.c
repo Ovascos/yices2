@@ -546,6 +546,32 @@ bool feasible_set_check_if_conflict(feasible_set_db_t* db, ivector_t* set_indice
   return conflict;
 }
 
+void feasible_set_db_get_conflict_reasons_clauses(const feasible_set_db_t* db, variable_t x, ivector_t* reasons_out) {
+  if (ctx_trace_enabled(db->plugin->ctx, "nra::get_conflict")) {
+    ctx_trace_printf(db->plugin->ctx, "get_reasons_clause of: ");
+    variable_db_print_variable(db->plugin->ctx->var_db, x, ctx_trace_out(db->plugin->ctx));
+    ctx_trace_printf(db->plugin->ctx, "\n");
+  }
+
+  ivector_t reasons_indices;
+  init_ivector(&reasons_indices, 0);
+
+  // Get the indices of the set refinements
+  feasible_set_get_conflict_reason_indices(db, x, &reasons_indices);
+
+  // TODO add filtering
+
+  // Return the conjunctive reasons
+  for (uint32_t i = 0; i < reasons_indices.size; ++ i) {
+    uint32_t set_index = reasons_indices.data[i];
+    feasibility_list_element_t* element = db->memory + set_index;
+    assert(element->reasons_size == 1);
+    ivector_push(reasons_out, element->reasons[0]);
+  }
+
+  delete_ivector(&reasons_indices);
+}
+
 void feasible_set_db_get_conflict_reasons(const feasible_set_db_t* db, variable_t x, const mcsat_value_t* x_value, ivector_t* reasons_out, ivector_t* lemma_reasons) {
 
   if (ctx_trace_enabled(db->plugin->ctx, "nra::get_conflict")) {
