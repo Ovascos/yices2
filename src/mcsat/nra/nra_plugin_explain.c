@@ -159,6 +159,7 @@ void lp_projection_map_construct(lp_projection_map_t* map,
   lp_variable_list_construct(&map->unprojected_vars);
 }
 
+static
 void lp_projection_map_construct_from_nra(lp_projection_map_t* map, nra_plugin_t* nra) {
   lp_projection_map_construct(map,
       nra->ctx->tm, &nra->lp_data, &nra->buffer, nra->ctx,
@@ -1134,6 +1135,27 @@ poly_constraint_resolve_fm(nra_plugin_t *nra,
   lp_polynomial_vector_delete(assumptions);
 
   return ok;
+}
+
+void nra_plugin_project(nra_plugin_t* nra, const ivector_t* core, ivector_t* conflict) {
+
+  lp_projection_map_t projection_map;
+  lp_projection_map_construct_from_nra(&projection_map, nra);
+
+  // Add all the polynomials
+  for (uint32_t core_i = 0; core_i < core->size; ++ core_i) {
+    variable_t constraint_var = core->data[core_i];
+    const poly_constraint_t* constraint = poly_constraint_db_get(nra->constraint_db, constraint_var);
+    assert(poly_constraint_is_unit(constraint, nra->lp_data.lp_assignment));
+    const lp_polynomial_t* p = poly_constraint_get_polynomial(constraint);
+    lp_projection_map_add(&projection_map, p);
+  }
+
+  // Project
+  lp_projection_map_project(&projection_map, conflict, NULL);
+
+  // Remove the projection map
+  lp_projection_map_destruct(&projection_map);
 }
 
 void nra_plugin_explain_conflict(nra_plugin_t* nra, const int_mset_t* pos, const int_mset_t* neg,
