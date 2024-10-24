@@ -98,14 +98,17 @@ void clause_db_print_clause(const clause_db_t* db, clause_ref_t ref, FILE* out) 
 }
 
 mcsat_clause_t* clause_db_get_clause(const clause_db_t* db, clause_ref_t C) {
+  assert(C < db->size);
   return (mcsat_clause_t*) (db->memory + C);
 }
 
 mcsat_tagged_clause_t* clause_db_get_tagged_clause(const clause_db_t* db, clause_ref_t C) {
+  assert(C < db->size);
   return (mcsat_tagged_clause_t*) (db->memory + C - offsetof(mcsat_tagged_clause_t, clause));
 }
 
 mcsat_clause_tag_t* clause_db_get_tag(const clause_db_t* db, clause_ref_t C) {
+  assert(C < db->size);
   return &((mcsat_tagged_clause_t*) (db->memory + C - offsetof(mcsat_tagged_clause_t, clause)))->tag;
 }
 
