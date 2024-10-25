@@ -399,6 +399,32 @@ bool nra_plugin_is_clause_univariate(nra_plugin_t* nra, const mcsat_clause_t *c,
   return true;
 }
 
+/** Takes a clause univariate in variable x and collects all constraint variables in out
+ *  and all other terms in c (false in the current trail) in side_cond. */
+static
+void nra_plugin_get_clause_univariate_constraints(nra_plugin_t *nra, const mcsat_clause_t *c, variable_t x, ivector_t *out, ivector_t *side_cond) {
+  const mcsat_trail_t* trail = nra->ctx->trail;
+
+  assert(!trail_has_value(nra->ctx->trail, x));
+
+  for (uint32_t i = 0; i < c->size && c->literals[i]; ++i) {
+    mcsat_literal_t l = c->literals[i];
+    variable_t constraint = literal_get_variable(l);
+
+    assert(!literal_is_true(l, trail));
+
+    if (literal_is_false(l, trail)) {
+      term_t t = variable_db_get_term(nra->ctx->var_db, constraint);
+      assert(literal_is_negated(l) == trail_get_boolean_value(trail, constraint));
+      ivector_push(side_cond, literal_is_negated(l) ? t : opposite_term(t));
+    } else {
+      assert(!trail_has_value(trail, constraint));
+      assert(constraint_unit_info_get_unit_var(&nra->unit_info, constraint) == x);
+      ivector_push(out, constraint);
+    }
+  }
+}
+
 static
 lp_feasibility_set_t* nra_plugin_clause_feasibility_set(nra_plugin_t* nra, const mcsat_clause_t* c, variable_t x) {
   const mcsat_trail_t* trail = nra->ctx->trail;
@@ -479,13 +505,19 @@ bool nra_plugin_clause_value_process_unit_constraint(nra_plugin_t* nra, variable
     }
 
     if (ctx_trace_enabled(nra->ctx, "nra::clause-level")) {
-      ctx_trace_printf(nra->ctx, " found clause ");
+      ctx_trace_printf(nra->ctx, " found clause (%d) ", clause);
       ctx_trace_printf(nra->ctx, " {");
       for (uint32_t j = 0; j < c->size && c->literals[j]; ++j) {
         mcsat_literal_t l = c->literals[j];
         if (j) ctx_trace_printf(nra->ctx, ", ");
+        if (literal_is_false(l, nra->ctx->trail)) ctx_trace_printf(nra->ctx, " X");
         if (literal_is_negated(l)) ctx_trace_printf(nra->ctx, " ! ");
-        variable_db_print_variable(nra->ctx->var_db, literal_get_variable(l), ctx_trace_out(nra->ctx));
+        if (poly_constraint_db_has(nra->constraint_db, literal_get_variable(l))) {
+          const poly_constraint_t *cstr = poly_constraint_db_get(nra->constraint_db, literal_get_variable(l));
+          poly_constraint_print(cstr, ctx_trace_out(nra->ctx));
+        } else {
+          variable_db_print_variable(nra->ctx->var_db, literal_get_variable(l), ctx_trace_out(nra->ctx));
+        }
       }
       ctx_trace_printf(nra->ctx, "}\n");
     }
@@ -532,15 +564,63 @@ lp_feasibility_set_t* nra_plugin_get_feasible_set(nra_plugin_t* nra, variable_t 
 }
 
 static
-void nra_plugin_clause_value_generate_hints(nra_plugin_t* nra) {
-  if (ctx_trace_enabled(nra->ctx, "nra::clause-level")) {
-    ctx_trace_printf(nra->ctx, "clause-level: generating hints\n");
+void nra_plugin_explain_clause_conflict(nra_plugin_t *nra, ivector_t *clauses, variable_t x, ivector_t *conflict) {
+  const mcsat_clause_info_interface_t* clause_info = nra->ctx->plugin_info->clause_info;
+
+  // TODO statistic on number of clauses in the conflict
+
+  assert(clauses->size > 0);
+
+  for (uint32_t i = 0; i < clauses->size; ++i) {
+    if (clauses->data[i] == clause_ref_null) {
+      // the current trail is part of the conflict
+      // TODO: handle this as well
+      return;
+    }
   }
 
+  // for each clause
+  ivector_t core, side_cond;
+  init_ivector(&core, 0);
+  init_ivector(&side_cond, 0);
+
+
+  // Variant 1: get one CAD of all literals
+  // TODO: Variant 2: get one CAD for each clause
+
+  // generate an explanation of the inverse of each clause
+  for (uint32_t i = 0; i < clauses->size; ++i) {
+    clause_ref_t clause_ref = clauses->data[i];
+    assert(clause_ref != clause_ref_null);
+    const mcsat_clause_t *c = clause_info->get_clause(clause_info, clause_ref);
+
+    nra_plugin_get_clause_univariate_constraints(nra, c, x, &core, &side_cond);
+  }
+
+  nra_plugin_project(nra, &core, conflict);
+
+  ivector_add(conflict, side_cond.data, side_cond.size);
+
+  delete_ivector(&core);
+  delete_ivector(&side_cond);
+
+  if (ctx_trace_enabled(nra->ctx, "nra::clause-level")) {
+    ctx_trace_printf(nra->ctx, "Explaining clause-level conflict: ");
+    for (int i = 0; i < conflict->size; ++i) {
+      if (i) ctx_trace_printf(nra->ctx, ", ");
+      term_print_to_file(ctx_trace_out(nra->ctx), nra->ctx->terms, conflict->data[i]);
+    }
+    ctx_trace_printf(nra->ctx, "\n");
+  }
+}
+
+static
+void nra_plugin_clause_value_generate_hints(nra_plugin_t* nra) {
   assert(trail_is_consistent(nra->ctx->trail));
 
   int_hset_t xs;
   init_int_hset(&xs, 0);
+  clause_ref_t clause_null = clause_ref_null;
 
   // Process new uint clauses
   while (!int_queue_is_empty(&nra->clause_hint_queue)) {
@@ -585,7 +665,7 @@ void nra_plugin_clause_value_generate_hints(nra_plugin_t* nra) {
       const lp_feasibility_set_t *set_trail = feasible_set_db_get(nra->feasible_set_db, x);
       if (set_trail) {
         feasible_set_db_update(nra->clause_hint_feasible_set_db, x,
-                               lp_feasibility_set_new_copy(set_trail), /* don't care */ &x, 1);
+                               lp_feasibility_set_new_copy(set_trail), &clause_null, 1);
       }
     }
 
@@ -613,8 +693,10 @@ void nra_plugin_clause_value_generate_hints(nra_plugin_t* nra) {
     if (empty) {
       // we found a conflict, report the conflict
       if (ctx_trace_enabled(nra->ctx, "nra::clause-level")) {
-        ctx_trace_printf(nra->ctx, " conflict in ");
+        ctx_trace_printf(nra->ctx, " conflict in %s ", variable_db_is_int(nra->ctx->var_db, x) ? "int" : "real");
         variable_db_print_variable(nra->ctx->var_db, x, ctx_trace_out(nra->ctx));
+        ctx_trace_printf(nra->ctx, " (%d)\n", x);
+        feasible_set_db_print_var(nra->clause_hint_feasible_set_db, x, stderr);
         ctx_trace_printf(nra->ctx, "\n");
       }
       // TODO how?
