@@ -458,6 +458,40 @@ void nra_plugin_clause_value_track_unit_constraint(nra_plugin_t* nra, variable_t
   int_queue_push(&nra->clause_hint_queue, constraint);
 }
 
+#if 0
+static
+bool nra_check_clause_level_feasible_set_reasons(nra_plugin_t *nra) {
+#ifdef NDEBUG
+  return true;
+#else
+  const mcsat_clause_info_interface_t* clause_info = nra->ctx->plugin_info->clause_info;
+  ivector_t v;
+  feasible_set_db_iterator_t it;
+
+  init_ivector(&v, 0);
+  feasible_set_db_iterator_construct(&it, nra->clause_hint_feasible_set_db);
+  while (!feasible_set_db_iterator_done(&it)) {
+    variable_t x = feasible_set_db_iterator_get_variable(&it);
+    if (feasible_set_db_get(nra->clause_hint_feasible_set_db, x)) {
+      ivector_reset(&v);
+      feasible_set_db_get_conflict_reasons_clauses(nra->clause_hint_feasible_set_db, x, &v);
+      for (uint32_t j = 0; j < v.size; ++j) {
+        //if (!nra_plugin_is_clause_univariate(nra, clause_info->get_clause(clause_info, v.data[j]), x)) {
+        //  return false;
+        //}
+        const mcsat_clause_t *c = clause_info->get_clause(clause_info, v.data[j]);
+        assert(nra_plugin_is_clause_univariate(nra, c, x));
+      }
+    }
+    feasible_set_db_iterator_next(&it);
+  }
+  feasible_set_db_iterator_destruct(&it);
+  delete_ivector(&v);
+  return true;
+#endif
+}
+#endif
+
 static
 bool nra_plugin_clause_value_process_unit_constraint(nra_plugin_t* nra, variable_t constraint) {
   const mcsat_clause_info_interface_t* clause_info = nra->ctx->plugin_info->clause_info;
@@ -699,7 +733,33 @@ void nra_plugin_clause_value_generate_hints(nra_plugin_t* nra) {
         feasible_set_db_print_var(nra->clause_hint_feasible_set_db, x, stderr);
         ctx_trace_printf(nra->ctx, "\n");
       }
-      // TODO how?
+
+#if 0
+      // get the clauses that are part of the conflict
+      ivector_t clauses, explanation;
+      init_ivector(&clauses, 0);
+      init_ivector(&explanation, 0);
+
+      // TODO if this contains clause_ref_null, then the trail is included in the conflict
+      feasible_set_db_get_conflict_reasons_clauses(nra->clause_hint_feasible_set_db, x, &clauses);
+
+      // explain the clauses
+      // TODO later on, don't perform this here, but report a conflict
+      nra_plugin_explain_clause_conflict(nra, &clauses, x, &explanation);
+
+      for (uint32_t j = 0; j < explanation.size; ++j) {
+        term_t t = explanation.data[i];
+        if (variable_db_has_variable(nra->ctx->var_db, unsigned_term(t))) {
+          variable_t v = variable_db_get_variable(nra->ctx->var_db, unsigned_term(t));
+          assert(trail_has_value(nra->ctx->trail, v));
+          assert(trail_get_boolean_value(nra->ctx->trail, v) == is_neg_term(t));
+        }
+      }
+
+      // clean up
+      delete_ivector(&clauses);
+      delete_ivector(&explanation);
+#endif
     }
   }
 
@@ -904,10 +964,12 @@ void nra_plugin_new_term_notify(plugin_t* plugin, term_t t, trail_token_t* prop)
     // Set the status of the constraint
     constraint_unit_info_set(&nra->unit_info, t_var, unit_status == CONSTRAINT_UNIT ? top_var : variable_null, unit_status);
 
+#ifdef CL
     // In case term is unit, track it
     if (unit_status == CONSTRAINT_UNIT) {
       nra_plugin_clause_value_track_unit_constraint(nra, t_var);
     }
+#endif
 
     // Add the constraint to the database
     nra_poly_constraint_add(nra, t_var);
@@ -1310,11 +1372,13 @@ void nra_plugin_process_variable_assignment(nra_plugin_t* nra, trail_token_t* pr
         if (trail_is_consistent(trail)) {
           nra_plugin_process_unit_constraint(nra, prop, constraint_var);
         }
+#ifdef CL
         // in case no conflict was found during unit processing
         if (trail_is_consistent(trail)) {
           // TODO if not required, as we're enqueuing only
           nra_plugin_clause_value_track_unit_constraint(nra, constraint_var);
         }
+#endif
       } else {
         // Fully assigned
         constraint_unit_info_set(&nra->unit_info, constraint_var, variable_null, CONSTRAINT_FULLY_ASSIGNED);
@@ -1433,9 +1497,11 @@ void nra_plugin_propagate(plugin_t* plugin, trail_token_t* prop) {
     nra_plugin_report_int_conflict(nra, prop, nra->conflict_variable_int);
   }
 
+#ifdef CL
   if (trail_is_consistent(trail)) {
     nra_plugin_clause_value_generate_hints(nra);
   }
+#endif
 
   assert(nra_plugin_check_assignment(nra));
 }
@@ -1446,6 +1512,7 @@ void nra_plugin_decide(plugin_t* plugin, variable_t x, trail_token_t* decide_tok
 
   assert(variable_db_is_real(nra->ctx->var_db, x) || variable_db_is_int(nra->ctx->var_db, x));
 
+#ifdef CL
   // Try to pick a value that is also clause-level compatible
   lp_feasibility_set_t *feasible_clause = nra_plugin_get_feasible_set(nra, x);
 
@@ -1459,6 +1526,10 @@ void nra_plugin_decide(plugin_t* plugin, variable_t x, trail_token_t* decide_tok
   } else {
     feasible = feasible_clause;
   }
+#else
+  // Get the feasibility set
+  const lp_feasibility_set_t* feasible = feasible_set_db_get(nra->feasible_set_db, x);
+#endif
 
   if (ctx_trace_enabled(nra->ctx, "nra::decide")) {
     ctx_trace_printf(nra->ctx, "decide on ");
@@ -1546,7 +1617,9 @@ void nra_plugin_decide(plugin_t* plugin, variable_t x, trail_token_t* decide_tok
   }
 
   lp_value_destruct(&x_new_lpvalue);
+#ifdef CL
   if (feasible_clause != NULL) { lp_feasibility_set_delete(feasible_clause); }
+#endif
 }
 
 /**
@@ -2167,11 +2240,15 @@ void nra_plugin_push(plugin_t* plugin) {
     ctx_trace_printf(nra->ctx, " --- push (%d) ---\n", nra->ctx->trail->decision_level);
   }
 
+#ifdef CL
   assert(int_queue_is_empty(&nra->clause_hint_queue));
+#endif
 
   lp_data_variable_order_push(&nra->lp_data);
   feasible_set_db_push(nra->feasible_set_db);
+#ifdef CL
   feasible_set_db_push(nra->clause_hint_feasible_set_db);
+#endif
 }
 
 static
@@ -2219,9 +2296,11 @@ void nra_plugin_pop(plugin_t* plugin) {
   // Pop the feasibility
   feasible_set_db_pop(nra->feasible_set_db);
 
+#ifdef CL
   // Undo the clause level reasoning
   feasible_set_db_pop(nra->clause_hint_feasible_set_db);
   int_queue_reset(&nra->clause_hint_queue);
+#endif
 
   // Unset the conflict
   nra->conflict_variable = variable_null;
