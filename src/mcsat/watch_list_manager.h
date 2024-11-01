@@ -81,10 +81,7 @@ uint32_t watch_list_manager_size(const watch_list_manager_t* wlm);
 /** Print the manager */
 void watch_list_manager_print(watch_list_manager_t* wlm, FILE* out);
 
-/**
- * Add a new list of variables to the manager and associate it with the
- * given constraint.
- */
+/** Add a new list of variables to the manager and associate it with the given constraint. */
 variable_list_ref_t watch_list_manager_new_list(watch_list_manager_t* wlm, const variable_t* list, uint32_t size, variable_t constraint);
 
 /** Returns the constraint associated with the variable list. */
@@ -99,9 +96,7 @@ variable_list_ref_t watch_list_manager_get_list_of(watch_list_manager_t* wlm, va
 /** Get the actual list */
 variable_t* watch_list_manager_get_list(watch_list_manager_t* wlm, variable_list_ref_t var_list);
 
-/**
- * Add the given variable list to the watch-list of the given watcher variable.
- */
+/** Add the given variable list to the watch-list of the given watcher variable. */
 void watch_list_manager_add_to_watch(watch_list_manager_t* wlm, variable_list_ref_t var_list, variable_t watcher);
 
 /** Mark the variables in the lists */

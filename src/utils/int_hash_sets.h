@@ -91,11 +91,11 @@ extern void delete_int_hset(int_hset_t *set);
 /*
  * Check whether s is empty
  */
-static inline bool int_hset_is_nonempty(int_hset_t *set) {
+static inline bool int_hset_is_nonempty(const int_hset_t *set) {
   return (set->z_flag || set->nelems > 0);
 }
 
-static inline bool int_hset_is_empty(int_hset_t *set) {
+static inline bool int_hset_is_empty(const int_hset_t *set) {
   return !int_hset_is_nonempty(set);
 }
 
@@ -103,7 +103,7 @@ static inline bool int_hset_is_empty(int_hset_t *set) {
 /*
  * Check whether x is in set s
  */
-extern bool int_hset_member(int_hset_t *set, uint32_t x);
+extern bool int_hset_member(const int_hset_t *set, uint32_t x);
 
 
 /*

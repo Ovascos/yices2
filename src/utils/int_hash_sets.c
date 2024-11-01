@@ -118,7 +118,7 @@ static void hset_insert(uint32_t *a, uint32_t mask, uint32_t x) {
  * - if x is not present, there must be at least one
  *   empty slot in a, otherwise the function loops.
  */
-static bool hset_search(uint32_t *a, uint32_t mask, uint32_t x) {
+static bool hset_search(const uint32_t *a, uint32_t mask, uint32_t x) {
   uint32_t i;
 
   i = hash(x) & mask;
@@ -192,7 +192,7 @@ static void hset_extend(int_hset_t *set) {
 /*
  * External function: check whether x is present in set
  */
-bool int_hset_member(int_hset_t *set, uint32_t x) {
+bool int_hset_member(const int_hset_t *set, uint32_t x) {
   if (x == 0) {
     return set->z_flag;
   }

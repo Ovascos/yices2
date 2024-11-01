@@ -74,14 +74,10 @@ struct feasible_set_db_s {
   nra_plugin_t* plugin;
 };
 
-static
+static inline
 uint32_t feasible_set_db_get_index(const feasible_set_db_t* db, variable_t x) {
   int_hmap_pair_t* find = int_hmap_find(&db->var_to_feasible_set_map, x);
-  if (find == NULL) {
-    return 0;
-  } else {
-    return find->val;
-  }
+  return (find == NULL) ? 0 : find->val;
 }
 
 static
@@ -197,7 +193,7 @@ lp_feasibility_set_t* feasible_set_db_get(feasible_set_db_t* db, variable_t x) {
 }
 
 static inline
-void ff_feasible_set_db_ensure_memory(feasible_set_db_t* db) {
+void feasible_set_db_ensure_memory(feasible_set_db_t* db) {
   if (db->memory_size >= db->memory_capacity) {
     db->memory_capacity = db->memory_capacity + db->memory_capacity / 2;
     db->memory = safe_realloc(db->memory, db->memory_capacity * sizeof(feasibility_list_element_t));
@@ -279,7 +275,7 @@ bool feasible_set_db_update(feasible_set_db_t* db, variable_t x, lp_feasibility_
   uint32_t new_index = db->memory_size;
   // Allocate new element
   db->memory_size ++;
-  ff_feasible_set_db_ensure_memory(db);
+  feasible_set_db_ensure_memory(db);
 
   // Set up the element
   feasibility_list_element_t* new_element = db->memory + new_index;
@@ -293,12 +289,8 @@ bool feasible_set_db_update(feasible_set_db_t* db, variable_t x, lp_feasibility_
     new_element->reasons[i] = cstr_list[i];
   }
   // Add to map
-  int_hmap_pair_t* find = int_hmap_find(&db->var_to_feasible_set_map, x);
-  if (find == NULL) {
-    int_hmap_add(&db->var_to_feasible_set_map, x, new_index);
-  } else {
-    find->val = new_index;
-  }
+  int_hmap_pair_t *find = int_hmap_get(&db->var_to_feasible_set_map, x);
+  find->val = new_index;
   // Add to updates list
   ivector_push(&db->updates, x);
   db->updates_size ++;
