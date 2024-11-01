@@ -40,6 +40,9 @@ void scope_holder_construct(scope_holder_t* scope);
 /** Destruct the scope holder. */
 void scope_holder_destruct(scope_holder_t* scope);
 
+/** Resets the scope holder. */
+void scope_holder_reset(scope_holder_t* scope);
+
 /**
  * Push the scope context. Arguments are int32_t* pointers ending with NULL.
  * The scope should be popped with the arguments in the same order.

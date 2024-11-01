@@ -147,6 +147,12 @@ static inline void ivector_shrink(ivector_t *v, uint32_t n) {
 }
 
 
+/**
+ * Performs a linear search for x in v.
+ */
+extern bool ivector_contains(const ivector_t *v, uint32_t x);
+
+
 /*
  * Remove duplicates in an integer vector
  * Side effect: sort v in increasing order

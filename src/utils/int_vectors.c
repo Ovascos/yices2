@@ -137,3 +137,15 @@ void ivector_remove_duplicates(ivector_t *v) {
 }
 
 
+/*
+ * Linear search for x in v
+ */
+bool ivector_contains(const ivector_t *v, uint32_t x) {
+  uint32_t i;
+  for (i = 0; i < v->size; ++i) {
+    if (v->data[i] == x) {
+      return true;
+    }
+  }
+  return false;
+}

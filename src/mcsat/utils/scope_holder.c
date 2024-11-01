@@ -19,7 +19,6 @@
 #include "mcsat/utils/scope_holder.h"
 
 #include <stdarg.h>
-#include <stdbool.h>
 #include <stddef.h>
 #include <assert.h>
 
@@ -30,6 +29,10 @@ void scope_holder_construct(scope_holder_t* scope) {
 
 void scope_holder_destruct(scope_holder_t* scope) {
   delete_ivector(&scope->trace);
+}
+
+void scope_holder_reset(scope_holder_t* scope) {
+  ivector_reset(&scope->trace);
 }
 
 void scope_holder_push(scope_holder_t* scope, ...) {

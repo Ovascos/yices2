@@ -394,6 +394,7 @@ mcsat_src_c := \
 	mcsat/bv/explain/full_bv_sat.c \
 	mcsat/bv/explain/full_bv_trivial.c \
 	mcsat/watch_list_manager.c \
+	mcsat/clause_tracker.c \
 	mcsat/preprocessor.c \
 	mcsat/options.c
 
