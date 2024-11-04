@@ -33,13 +33,14 @@
 typedef struct clause_tracker_s clause_tracker_t;
 
 /** Returns true if constraint is handled by the plugin, i.e. query plugin's data structures. */
-typedef bool (*clause_tracker_query_t)(variable_t constraint);
+typedef bool (*clause_tracker_query_t)(void *query_data, variable_t constraint);
 
-/*
+/**
  * Initializes the clause tracker.
  * Invariant: for every constraint c in unit_info, query(c) must return true.
  */
-clause_tracker_t* clause_tracker_construct(const plugin_context_t *ctx, const constraint_unit_info_t* unit_info, clause_tracker_query_t query);
+clause_tracker_t *clause_tracker_construct(const plugin_context_t *ctx, const constraint_unit_info_t *unit_info,
+                                           clause_tracker_query_t query, void *query_data);
 
 /** Deletes the clause tracker. */
 void clause_tracker_delete(clause_tracker_t *ct);
@@ -68,6 +69,6 @@ void clause_tracker_pop(clause_tracker_t *ct);
 /** Resets all internal structures and forgets all clauses. Useful after restarts with clause deletion. */
 void clause_tracker_reset(clause_tracker_t *ct);
 
-// TODO add GC
+// TODO add GC and clause deletion support
 
 #endif // CLAUSE_TRACKER_H

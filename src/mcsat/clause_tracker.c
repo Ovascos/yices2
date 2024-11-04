@@ -45,6 +45,9 @@ struct clause_tracker_s {
   /** Query function to check if a constraint is known by the plugin. */
   clause_tracker_query_t query;
 
+  /** Pointer to be passed to query. */
+  void* query_data;
+
   /** All clauses that are known to the tracker */
   int_hset_t clauses;
 
@@ -85,6 +88,12 @@ static inline
 void clause_tracker_get_clauses(const clause_tracker_t *ct, variable_t v, ivector_t *clauses) {
   const mcsat_clause_info_interface_t *clause_info = get_clause_info(ct);
   clause_info->get_clauses_by_var(clause_info, v, clauses);
+}
+
+static inline
+bool clause_tracker_query(const clause_tracker_t *ct, variable_t constraint) {
+  assert(ct->query);
+  return ct->query(ct->query_data, constraint);
 }
 
 // watch list handling
@@ -177,13 +186,15 @@ void clause_tracker_list_push(clause_tracker_t *ct, clause_ref_t c_ref, variable
 
 // external functions
 
-clause_tracker_t* clause_tracker_construct(const plugin_context_t *ctx, const constraint_unit_info_t* unit_info, clause_tracker_query_t query) {
+clause_tracker_t* clause_tracker_construct(const plugin_context_t *ctx, const constraint_unit_info_t *unit_info,
+                                           clause_tracker_query_t query, void *query_data) {
   clause_tracker_t *ct = safe_malloc(sizeof(clause_tracker_t));
 
   // set config
   ct->ctx = ctx;
   ct->unit_info = unit_info;
   ct->query = query;
+  ct->query_data = query_data;
 
   // allocate the rest
   init_ptr_hmap(&ct->watch_list, 0);
@@ -222,7 +233,7 @@ static inline
 bool clause_tracker_is_unit(const clause_tracker_t *ct, variable_t constraint) {
   assert(variable_db_is_boolean(ct->ctx->var_db, constraint));
   bool is_unit = constraint_unit_info_get(ct->unit_info, constraint) == CONSTRAINT_UNIT;
-  assert(!is_unit || ct->query(constraint));
+  assert(!is_unit || clause_tracker_query(ct, constraint));
   assert(!is_unit || !trail_has_value(ct->ctx->trail, constraint));
   return is_unit;
 }
@@ -244,7 +255,7 @@ variable_t clause_watch_update(const clause_tracker_t *ct, clause_ref_t c_ref) {
       new_watch = v;
       // if we found a theory constraint we're done
       // otherwise, continue to maybe later find one
-      if (ct->query(v)) {
+      if (clause_tracker_query(ct, v)) {
         break;
       }
     }
