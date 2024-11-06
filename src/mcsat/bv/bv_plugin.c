@@ -633,7 +633,7 @@ void bv_plugin_process_unit_constraint(bv_plugin_t* bv, trail_token_t* prop, var
   assert(cstr_bdd.bdd[0] != NULL);
 
   // Update the feasible intervals
-  bool feasible = bv_feasible_set_db_update(bv->feasible, x, cstr_bdd, &cstr, 1);
+  bool feasible = bv_feasible_set_db_update(bv->feasible, x, cstr_bdd, &cstr, 1, 0);
 
   // If the intervals are empty, we have a conflict
   if (!feasible) {
@@ -1054,10 +1054,12 @@ void bv_plugin_get_conflict(plugin_t* plugin, ivector_t* conflict) {
 
   switch (bv->conflict_type) {
   case BV_CONFLICT_UNIT:
-    bv_feasible_set_db_get_reasons(bv->feasible, bv->conflict_variable, &conflict_core, &lemma_reasons, EXPLAIN_EMPTY);
+    bv_feasible_set_db_get_reasons(bv->feasible, bv->conflict_variable, &conflict_core, &lemma_reasons, EXPLAIN_EMPTY,
+                                   NULL);
     break;
   case BV_CONFLICT_ASSUMPTION:
-    bv_feasible_set_db_get_reasons(bv->feasible, bv->conflict_variable, &conflict_core, &lemma_reasons, EXPLAIN_ASSUMPTION);
+    bv_feasible_set_db_get_reasons(bv->feasible, bv->conflict_variable, &conflict_core, &lemma_reasons,
+                                   EXPLAIN_ASSUMPTION, NULL);
     break;
   default:
     assert(false);
@@ -1125,7 +1127,7 @@ term_t bv_plugin_explain_propagation(plugin_t* plugin, variable_t var, ivector_t
     ivector_t explain_core, lemma_reasons;
     init_ivector(&explain_core, 0);
     init_ivector(&lemma_reasons, 0);
-    bv_feasible_set_db_get_reasons(bv->feasible, var, &explain_core, &lemma_reasons, EXPLAIN_SINGLETON);
+    bv_feasible_set_db_get_reasons(bv->feasible, var, &explain_core, &lemma_reasons, EXPLAIN_SINGLETON, NULL);
 
     if (ctx_trace_enabled(bv->ctx, "mcsat::bv::explain")) {
       trail_print(trail, ctx_trace_out(bv->ctx));

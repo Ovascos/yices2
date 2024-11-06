@@ -473,7 +473,7 @@ void ff_plugin_process_unit_constraint(ff_plugin_t* ff, trail_token_t* prop, var
       lp_feasibility_set_int_print(constraint_feasible, ctx_trace_out(ff->ctx));
     }
 
-    bool consistent = ff_feasible_set_db_update(ff->feasible_set_db, x, constraint_feasible, &constraint_var, 1);
+    bool consistent = ff_feasible_set_db_update(ff->feasible_set_db, x, constraint_feasible, &constraint_var, 1, 0);
 
     if (ctx_trace_enabled(ff->ctx, "ff::propagate")) {
       ctx_trace_printf(ff->ctx, "ff: new feasible = ");
@@ -846,7 +846,7 @@ void ff_plugin_get_conflict(plugin_t* plugin, ivector_t* conflict) {
   ivector_t core, lemma_reasons;
   init_ivector(&core, 0);
   init_ivector(&lemma_reasons, 0);
-  ff_feasible_set_db_get_conflict_reasons(ff->feasible_set_db, x, &core, &lemma_reasons);
+  ff_feasible_set_db_get_conflict_reasons(ff->feasible_set_db, x, &core, &lemma_reasons, NULL);
 
   if (ctx_trace_enabled(ff->ctx, "ff::conflict")) {
     ctx_trace_printf(ff->ctx, "ff_plugin_get_conflict(): core:\n");

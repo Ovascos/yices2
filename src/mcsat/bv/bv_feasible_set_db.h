@@ -42,7 +42,9 @@ void bv_feasible_set_db_delete(bv_feasible_set_db_t* db);
  *
  * If more than one reason, it's considered a disjunctive top-level assertion.
  */
-bool bv_feasible_set_db_update(bv_feasible_set_db_t* db, variable_t x, bdd_t new_set, variable_t* reasons, uint32_t reasons_count);
+bool
+bv_feasible_set_db_update(bv_feasible_set_db_t *db, variable_t x, bdd_t new_set, variable_t *reasons,
+                          uint32_t reasons_count, int32_t aux_id);
 
 /** Get the feasible set of a variable */
 bdd_t bv_feasible_set_db_get(const bv_feasible_set_db_t* db, variable_t x);
@@ -65,8 +67,13 @@ typedef enum {
   EXPLAIN_ASSUMPTION
 } bv_feasible_explain_mode_t;
 
-/** Get the reason for a conflict on x. Feasible set of x should be empty. */
-void bv_feasible_set_db_get_reasons(const bv_feasible_set_db_t* db, variable_t x, ivector_t* reasons_out, ivector_t* lemma_reasons, bv_feasible_explain_mode_t mode);
+/**
+ * Get the reason for a conflict on x. Feasible set of x should be empty. If aux_ids_out is
+ * not NULL, it is filled with all aux_ids of the updates in the minimized conflict.
+ */
+void
+bv_feasible_set_db_get_reasons(const bv_feasible_set_db_t *db, variable_t x, ivector_t *reasons_out,
+                               ivector_t *lemma_reasons, bv_feasible_explain_mode_t mode, ivector_t *aux_ids_out);
 
 /** Return any fixed variables */
 variable_t bv_feasible_set_db_get_fixed(bv_feasible_set_db_t* db);

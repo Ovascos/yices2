@@ -565,7 +565,7 @@ bool nra_plugin_clause_value_process_unit_constraint(nra_plugin_t* nra, variable
 
     lp_feasibility_set_t *c_fs = nra_plugin_clause_feasibility_set(nra, c, x);
 
-    bool feasible = feasible_set_db_update(nra->clause_hint_feasible_set_db, x, c_fs, &clause, 1);
+    bool feasible = feasible_set_db_update(nra->clause_hint_feasible_set_db, x, c_fs, &clause, 1, 0);
     if (!feasible) {
       break;
     }
@@ -699,7 +699,7 @@ void nra_plugin_clause_value_generate_hints(nra_plugin_t* nra) {
       const lp_feasibility_set_t *set_trail = feasible_set_db_get(nra->feasible_set_db, x);
       if (set_trail) {
         feasible_set_db_update(nra->clause_hint_feasible_set_db, x,
-                               lp_feasibility_set_new_copy(set_trail), &clause_null, 1);
+                               lp_feasibility_set_new_copy(set_trail), &clause_null, 1, 0);
       }
     }
 
@@ -1126,7 +1126,7 @@ void nra_plugin_infer_bounds_from_constraint(nra_plugin_t* nra, trail_token_t* p
         variable_t x = variable_db_get_variable(nra->ctx->var_db, x_term);
         assert(x != variable_null);
         lp_feasibility_set_t* x_feasible = lp_feasibility_set_new_from_interval(x_interval);
-        bool consistent = feasible_set_db_update(nra->feasible_set_db, x, x_feasible, &constraint_var, 1);
+        bool consistent = feasible_set_db_update(nra->feasible_set_db, x, x_feasible, &constraint_var, 1, 0);
         if (!consistent) {
           nra_plugin_report_conflict(nra, prop, constraint_var);
         } else if (variable_db_is_int(nra->ctx->var_db, x)) {
@@ -1183,7 +1183,7 @@ void nra_plugin_process_unit_constraint(nra_plugin_t* nra, trail_token_t* prop, 
     }
 
     // Update the infeasible intervals
-    bool still_feasible = feasible_set_db_update(nra->feasible_set_db, x, constraint_feasible, &constraint_var, 1);
+    bool still_feasible = feasible_set_db_update(nra->feasible_set_db, x, constraint_feasible, &constraint_var, 1, 0);
 
     if (ctx_trace_enabled(nra->ctx, "nra::propagate")) {
       ctx_trace_printf(nra->ctx, "nra: new feasible = ");
@@ -1752,7 +1752,7 @@ void nra_plugin_get_real_conflict(nra_plugin_t* nra, const int_mset_t* pos, cons
   ivector_t core, lemma_reasons;
   init_ivector(&core, 0);
   init_ivector(&lemma_reasons, 0);
-  feasible_set_db_get_conflict_reasons(nra->feasible_set_db, x, NULL, &core, &lemma_reasons);
+  feasible_set_db_get_conflict_reasons(nra->feasible_set_db, x, NULL, &core, &lemma_reasons, NULL);
 
   if (ctx_trace_enabled(nra->ctx, "nra::conflict")) {
     ctx_trace_printf(nra->ctx, "nra_plugin_get_conflict(): core:\n");
@@ -1813,7 +1813,7 @@ bool nra_plugin_speculate_constraint(nra_plugin_t* nra, int_mset_t* pos, int_mse
   lp_feasibility_set_t* constraint_feasible = nra_plugin_get_feasible_set_of_constraint(nra, constraint_var, x, negated);
 
   // Update the infeasible intervals
-  bool feasible = feasible_set_db_update(nra->feasible_set_db, x, constraint_feasible, &constraint_var, 1);
+  bool feasible = feasible_set_db_update(nra->feasible_set_db, x, constraint_feasible, &constraint_var, 1, 0);
 
   // Add to assumptions
   if (negated) {
@@ -2004,7 +2004,7 @@ void nra_plugin_get_assumption_conflict(nra_plugin_t* nra, variable_t x, ivector
   ivector_t core, lemma_reasons;
   init_ivector(&core, 0);
   init_ivector(&lemma_reasons, 0);
-  feasible_set_db_get_conflict_reasons(nra->feasible_set_db, x, x_value, &core, &lemma_reasons);
+  feasible_set_db_get_conflict_reasons(nra->feasible_set_db, x, x_value, &core, &lemma_reasons, NULL);
 
   if (ctx_trace_enabled(nra->ctx, "nra::conflict")) {
     ctx_trace_printf(nra->ctx, "nra_plugin_get_assumption_conflict(): core:\n");
@@ -2484,7 +2484,8 @@ void nra_plugin_new_lemma_notify(plugin_t* plugin, ivector_t* lemma, trail_token
       }
 
       // Update
-      bool feasible = feasible_set_db_update(nra->feasible_set_db, unit_var, lemma_feasible, lemma_reasons.data, lemma_reasons.size);
+      bool feasible = feasible_set_db_update(nra->feasible_set_db, unit_var, lemma_feasible, lemma_reasons.data,
+                                             lemma_reasons.size, 0);
       if (ctx_trace_enabled(nra->ctx, "nra::lemma")) {
         ctx_trace_printf(nra->ctx, "nra: new feasible = ");
         const lp_feasibility_set_t* current_feasible = feasible_set_db_get(nra->feasible_set_db, unit_var);

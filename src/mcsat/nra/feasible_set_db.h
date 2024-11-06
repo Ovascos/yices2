@@ -42,7 +42,9 @@ void feasible_set_db_delete(feasible_set_db_t* db);
  *
  * If more than one reason, it's considered a disjunctive top-level assertion (clause);
  */
-bool feasible_set_db_update(feasible_set_db_t* db, variable_t x, lp_feasibility_set_t* new_set, const variable_t* reasons, uint32_t reasons_count);
+bool
+feasible_set_db_update(feasible_set_db_t *db, variable_t x, lp_feasibility_set_t *new_set, const variable_t *reasons,
+                       uint32_t reasons_count, int32_t aux_id);
 
 /** Checks if constraint cstr is (part of) a reason for variable x */
 bool feasible_set_db_contains_reason(feasible_set_db_t* db, variable_t x, variable_t cstr);
@@ -56,11 +58,16 @@ void feasible_set_db_push(feasible_set_db_t* db);
 /** Pop the context */
 void feasible_set_db_pop(feasible_set_db_t* db);
 
-/** Get the reason for a conflict on x. Feasible set of x should be empty. */
-void feasible_set_db_get_conflict_reasons(const feasible_set_db_t* db, variable_t x, const mcsat_value_t* x_value, ivector_t* reasons_out, ivector_t* lemma_reasons_out);
 
 /** Same as above, but treating the reasons as clause_ref_t */
 void feasible_set_db_get_conflict_reasons_clauses(const feasible_set_db_t* db, variable_t x, ivector_t* reasons_out);
+/**
+ * Get the reason for a conflict on x. Feasible set of x should be empty. If aux_ids_out is
+ * not NULL, it is filled with all aux_ids of the updates in the minimized conflict.
+ */
+void
+feasible_set_db_get_conflict_reasons(const feasible_set_db_t *db, variable_t x, const mcsat_value_t *x_value,
+                                     ivector_t *reasons_out, ivector_t *lemma_reasons_out, ivector_t *aux_ids_out);
 
 /** Print the feasible set database */
 void feasible_set_db_print(feasible_set_db_t* db, FILE* out);

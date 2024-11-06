@@ -43,10 +43,19 @@ lp_feasibility_set_int_t* ff_feasible_set_db_get(ff_feasible_set_db_t* db, varia
  *
  * If more than one reason, it's considered a disjunctive top-level assertion (clause)
  */
-bool ff_feasible_set_db_update(ff_feasible_set_db_t* db, variable_t x, lp_feasibility_set_int_t* new_set, const variable_t* reasons, size_t reasons_count);
+bool
+ff_feasible_set_db_update(ff_feasible_set_db_t *db, variable_t x, lp_feasibility_set_int_t *new_set,
+                          const variable_t *reasons, size_t reasons_count, int32_t aux_id);
 
-/** Get the reason for a conflict on x. Feasible set of x should be empty. */
-void ff_feasible_set_db_get_conflict_reasons(const ff_feasible_set_db_t* db, variable_t x, ivector_t* reasons_out, ivector_t* lemma_reasons);
+/**
+ * Update the feasible set of the variable with a new set. The new set is kept
+ * if it reduces the existing feasible set. Returns true if consistent.
+ *
+ * If more than one reason, it's considered a disjunctive top-level assertion (clause);
+ */
+void
+ff_feasible_set_db_get_conflict_reasons(const ff_feasible_set_db_t *db, variable_t x, ivector_t *reasons_out,
+                                        ivector_t *lemma_reasons, ivector_t *aux_ids_out);
 
 /** Push the context */
 void ff_feasible_set_db_push(ff_feasible_set_db_t* db);

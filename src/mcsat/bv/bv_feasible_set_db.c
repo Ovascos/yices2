@@ -33,13 +33,18 @@ typedef struct {
   /** Next element */
   uint32_t prev;
   /** Reasons for the update, if one then constraint, otherwise disjunction */
-  variable_t* reasons;
+  union {
+    variable_t  reason;
+    variable_t* lemma_reasons;
+  };
   /** Size of the reasons */
   uint32_t reasons_size;
   /** The new total feasible set (i.e. feasible set of all asserted constraints) */
   bdd_t feasible_set;
   /** The feasible set of the reason (feasible = feasible intersect this) */
   bdd_t reason_feasible_set;
+  /** An external id to track various things. */
+  int32_t aux_id;
 
 } feasibility_list_element_t;
 
@@ -96,6 +101,18 @@ uint32_t bv_feasible_set_db_get_index(const bv_feasible_set_db_t* db, variable_t
   }
 }
 
+static
+void bv_feasibility_list_element_delete(bv_bdd_manager_t* bddm, feasibility_list_element_t *element) {
+  // Release the BDDs
+  bdd_t s1 = element->feasible_set;
+  bdd_t s2 = element->reason_feasible_set;
+  bv_bdd_manager_bdd_detach(bddm, s1);
+  bv_bdd_manager_bdd_detach(bddm, s2);
+  if (element->reasons_size > 1) {
+    safe_free(element->lemma_reasons);
+  }
+}
+
 void bv_feasible_set_db_print_var(const bv_feasible_set_db_t* db, variable_t var, FILE* out) {
 
   const variable_db_t* var_db = db->ctx->var_db;
@@ -115,10 +132,10 @@ void bv_feasible_set_db_print_var(const bv_feasible_set_db_t* db, variable_t var
       fprintf(out, "\t\tDue to lemma\n");
     } else {
       fprintf(out, "\t\tDue to ");
-      variable_db_print_variable(var_db, current->reasons[0], out);
-      if (variable_db_is_boolean(var_db, current->reasons[0]) == BOOL_TYPE) {
+      variable_db_print_variable(var_db, current->reason, out);
+      if (variable_db_is_boolean(var_db, current->reason) == BOOL_TYPE) {
         // Otherwise it's a term evaluation, always true
-        fprintf(out, " assigned to %s\n", trail_get_boolean_value(db->ctx->trail, current->reasons[0]) ? "true" : "false");
+        fprintf(out, " assigned to %s\n", trail_get_boolean_value(db->ctx->trail, current->reason) ? "true" : "false");
       }
     }
     index = current->prev;
@@ -184,11 +201,7 @@ void bv_feasible_set_db_delete(bv_feasible_set_db_t* db) {
   uint32_t i;
   // Start from 1, 0 is special.
   for (i = 1; i < db->memory_size; ++ i) {
-    safe_free(db->memory[i].reasons);
-    bdd_t s1 = db->memory[i].feasible_set;
-    bdd_t s2 = db->memory[i].reason_feasible_set;
-    bv_bdd_manager_bdd_detach(db->bddm, s1);
-    bv_bdd_manager_bdd_detach(db->bddm, s2);
+    bv_feasibility_list_element_delete(db->bddm, db->memory + i);
   }
   // Delete the other stuff
   mcsat_value_destruct(&db->tmp_value);
@@ -262,7 +275,9 @@ const mcsat_value_t* bv_feasible_set_db_pick_value(bv_feasible_set_db_t* db, var
   return &db->tmp_value;
 }
 
-bool bv_feasible_set_db_update(bv_feasible_set_db_t* db, variable_t x, bdd_t new_set, variable_t* cstr_list, uint32_t cstr_count) {
+bool
+bv_feasible_set_db_update(bv_feasible_set_db_t *db, variable_t x, bdd_t new_set, variable_t *cstr_list,
+                          uint32_t cstr_count, int32_t aux_id) {
 
   assert(db->updates_size == db->updates.size);
   bv_bdd_manager_t* bddm = db->bddm;
@@ -325,18 +340,22 @@ bool bv_feasible_set_db_update(bv_feasible_set_db_t* db, variable_t x, bdd_t new
     db->memory = (feasibility_list_element_t*) safe_realloc(db->memory, db->memory_capacity*sizeof(feasibility_list_element_t));
   }
   db->memory_size ++;
-  // Setup the element
+  // Set up the element
   feasibility_list_element_t* new_element = db->memory + new_index;
   new_element->feasible_set = intersect; // Intersect attached already
   new_element->reason_feasible_set = new_set;
   bv_bdd_manager_bdd_attach(bddm, new_set); // One more reference
   new_element->prev = prev;
+  new_element->aux_id = aux_id;
   // Reasons
   new_element->reasons_size = cstr_count;
-  new_element->reasons = (variable_t*) safe_malloc(sizeof(variable_t)*cstr_count);
-  uint32_t i;
-  for (i = 0; i < cstr_count; ++ i) {
-    new_element->reasons[i] = cstr_list[i];
+  if (cstr_count == 1) {
+    new_element->reason = cstr_list[0];
+  } else {
+    new_element->lemma_reasons = (variable_t *) safe_malloc(sizeof(variable_t) * cstr_count);
+    for (uint32_t i = 0; i < cstr_count; ++i) {
+      new_element->lemma_reasons[i] = cstr_list[i];
+    }
   }
   // Add to map
   int_hmap_pair_t* find = int_hmap_find(&db->var_to_feasible_set_map, x);
@@ -381,8 +400,6 @@ void bv_feasible_set_db_pop(bv_feasible_set_db_t* db) {
     bv_feasible_set_db_print(db, ctx_trace_out(db->ctx));
   }
 
-  bv_bdd_manager_t* bddm = db->bddm;
-
   scope_holder_pop(&db->scope,
       &db->updates_size,
       &db->fixed_variable_size,
@@ -402,12 +419,7 @@ void bv_feasible_set_db_pop(bv_feasible_set_db_t* db) {
     db->memory_size --;
     feasibility_list_element_t* element = db->memory + db->memory_size;
     uint32_t prev = element->prev;
-    // Release the BDDs
-    bdd_t s1 = element->feasible_set;
-    bdd_t s2 = element->reason_feasible_set;
-    bv_bdd_manager_bdd_detach(bddm, s1);
-    bv_bdd_manager_bdd_detach(bddm, s2);
-    safe_free(element->reasons);
+    bv_feasibility_list_element_delete(db->bddm, element);
     // Redirect map to the previous one
     int_hmap_pair_t* find = int_hmap_find(&db->var_to_feasible_set_map, x);
     assert(find != NULL);
@@ -503,15 +515,17 @@ bool bv_feasible_set_compare_reasons(void *bv_feasible_set_db_ptr, int32_t r1, i
 
   // TODO: think which constraints are better than others
 
-  uint32_t i;
-
   bv_feasible_set_db_t* db = (bv_feasible_set_db_t*) bv_feasible_set_db_ptr;
   const mcsat_trail_t* trail = db->ctx->trail;
 
+  feasibility_list_element_t
+      *e1 = db->memory + r1,
+      *e2 = db->memory + r2;
+
   // Get max degree and max level of the reasons of first constraint
   uint32_t r1_level = 0;
-  for (i = 0; i < db->memory[r1].reasons_size; ++ i) {
-    variable_t r1_i_var = db->memory[r1].reasons[i];
+  for (uint32_t i = 0; i < e1->reasons_size; ++ i) {
+    variable_t r1_i_var = e1->reasons_size == 1 ? e1->reason : e1->lemma_reasons[i];
     if (trail_has_value(trail, r1_i_var)) {
       uint32_t r1_i_level = trail_get_level(trail, r1_i_var);
       if (r1_i_level > r1_level) {
@@ -522,8 +536,8 @@ bool bv_feasible_set_compare_reasons(void *bv_feasible_set_db_ptr, int32_t r1, i
 
   // Get max degree and max level of the reasons of second constraint
   uint32_t r2_level = 0;
-  for (i = 0; i < db->memory[r2].reasons_size; ++ i) {
-    variable_t r2_i_var = db->memory[r2].reasons[i];
+  for (uint32_t i = 0; i < e2->reasons_size; ++ i) {
+    variable_t r2_i_var = e2->reasons_size == 1 ? e2->reason : e2->lemma_reasons[i];
     if (trail_has_value(trail, r2_i_var)) {
       uint32_t r2_i_level = trail_get_level(trail, r2_i_var);
       if (r2_i_level > r2_level) {
@@ -550,7 +564,7 @@ void print_conflict_reasons(FILE* out, const bv_feasible_set_db_t* db, const ive
     uint32_t r_i_size = db->memory[r_i].reasons_size;
     for (j = 0; j < r_i_size; ++ j) {
       if (j) fprintf(out, ", ");
-      variable_t r_i_var = db->memory[r_i].reasons[j];
+      variable_t r_i_var = r_i_size == 1 ? db->memory[r_i].reason : db->memory[r_i].lemma_reasons[j];
       const mcsat_value_t* v = trail_get_value(db->ctx->trail, r_i_var);
       assert(v->type == VALUE_BOOLEAN);
       fprintf(out, v->b ? "(T) " : "(F) ");
@@ -609,7 +623,8 @@ void bv_feasible_set_filter_reason_indices(const bv_feasible_set_db_t* db, ivect
 
 }
 
-void bv_feasible_set_db_get_reasons(const bv_feasible_set_db_t* db, variable_t x, ivector_t* reasons_out, ivector_t* lemma_reasons, bv_feasible_explain_mode_t mode) {
+void bv_feasible_set_db_get_reasons(const bv_feasible_set_db_t *db, variable_t x, ivector_t *reasons_out,
+                                    ivector_t *lemma_reasons, bv_feasible_explain_mode_t mode, ivector_t *aux_ids_out) {
 
   ivector_t reasons_indices;
   init_ivector(&reasons_indices, 0);
@@ -624,18 +639,19 @@ void bv_feasible_set_db_get_reasons(const bv_feasible_set_db_t* db, variable_t x
   bv_feasible_set_filter_reason_indices(db, &reasons_indices, mode, x);
 
   // Return the conjunctive reasons
-  uint32_t i;
-  for (i = 0; i < reasons_indices.size; ++ i) {
+  for (uint32_t i = 0; i < reasons_indices.size; ++ i) {
     uint32_t set_index = reasons_indices.data[i];
     feasibility_list_element_t* element = db->memory + set_index;
+    if (aux_ids_out != NULL) {
+      ivector_push(aux_ids_out, element->aux_id);
+    }
     if (element->reasons_size == 1) {
-      variable_t reason = element->reasons[0];
+      variable_t reason = element->reason;
       assert(variable_db_is_boolean(var_db, reason));
       ivector_push(reasons_out, reason);
     } else {
-      uint32_t j;
-      for (j = 0; j < element->reasons_size; ++j) {
-        variable_t reason = element->reasons[j];
+      for (uint32_t j = 0; j < element->reasons_size; ++j) {
+        variable_t reason = element->lemma_reasons[j];
         assert(variable_db_is_boolean(var_db, reason));
         ivector_push(lemma_reasons, reason);
       }
@@ -654,8 +670,12 @@ void bv_feasible_set_db_gc_mark(bv_feasible_set_db_t* db, gc_info_t* gc_vars) {
     uint32_t element_i, reason_i;
     for (element_i = 1; element_i < db->memory_size; ++ element_i) {
       feasibility_list_element_t* element = db->memory + element_i;
-      for (reason_i = 0; reason_i < element->reasons_size; ++ reason_i) {
-        gc_info_mark(gc_vars, element->reasons[reason_i]);
+      if (element->reasons_size == 1) {
+        gc_info_mark(gc_vars, element->reason);
+      } else {
+        for (reason_i = 0; reason_i < element->reasons_size; ++reason_i) {
+          gc_info_mark(gc_vars, element->lemma_reasons[reason_i]);
+        }
       }
     }
   }
