@@ -32,6 +32,10 @@
 
 typedef struct clause_tracker_s clause_tracker_t;
 
+typedef uint32_t clause_tracker_ref_t;
+
+#define clause_tracker_ref_null 0
+
 /** Returns true if constraint is handled by the plugin, i.e. query plugin's data structures. */
 typedef bool (*clause_tracker_query_t)(void *query_data, variable_t constraint);
 
@@ -55,9 +59,20 @@ uint32_t clause_tracker_track_decided_constraint(clause_tracker_t *ct, variable_
 /** Returns the number of c-unit clauses in x. */
 uint32_t clause_tracker_count_unit_clauses(const clause_tracker_t *ct, variable_t x);
 
-/** Get the last-n-th c-unit clause in x (0 is the most recently detected).
- * If the index n exists, fills variable_t in constraints and side_conditions and returns true. */
-bool clause_tracker_get_unit_clauses(const clause_tracker_t *ct, variable_t x, uint32_t n, ivector_t *constraints, ivector_t *side_conditions);
+/** Fills refs with clause tracker references of unit clauses in x. */
+void clause_tracker_get_var_unit_clause(const clause_tracker_t *ct, variable_t x, ivector_t *refs);
+
+/** Gets one new and unprocessed unit clause, or clause_tracker_ref_null if none exists. */
+clause_tracker_ref_t clause_tracker_get_new_unit_clause(clause_tracker_t *ct);
+
+/** Gets the unit variable of a unit clause. */
+variable_t clause_tracker_get_unit_variable(const clause_tracker_t *ct, clause_tracker_ref_t ref);
+
+/** Gets the c-unit constraints of a unit clause. */
+void clause_tracker_get_constraints(const clause_tracker_t *ct, clause_tracker_ref_t ref, ivector_t *pos, ivector_t *neg);
+
+/** Gets the side-conditions of a unit clause, i.e. clause literals that are non-c-unit and on the trail. */
+void clause_tracker_get_side_conditions(const clause_tracker_t *ct, clause_tracker_ref_t ref, ivector_t *pos, ivector_t *neg);
 
 /** Pushes the clause level information. */
 void clause_tracker_push(clause_tracker_t *ct);

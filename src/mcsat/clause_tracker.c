@@ -63,6 +63,9 @@ struct clause_tracker_s {
   /** The capacity of the memory */
   uint32_t memory_capacity;
 
+  /** The last reported unit clause */
+  uint32_t memory_pos;
+
   /** Map from constraints to the last unit clause */
   int_hmap_t var_to_list_element;
 
@@ -206,6 +209,7 @@ clause_tracker_t* clause_tracker_construct(const plugin_context_t *ctx, const co
   ct->memory_capacity = INITIAL_LIST_SIZE;
   ct->memory = safe_malloc(sizeof(clause_tracker_list_element_t) * INITIAL_LIST_SIZE);
   ct->memory_size = 1; // 0 is special null ref
+  ct->memory_pos = 1;
   ct->memory[0].c_ref = clause_ref_null;
 
   return ct;
@@ -370,33 +374,74 @@ uint32_t clause_tracker_count_unit_clauses(const clause_tracker_t *ct, variable_
   return cnt;
 }
 
-bool clause_tracker_get_unit_clauses(const clause_tracker_t *ct, variable_t x, uint32_t n, ivector_t *constraints, ivector_t *side_conditions) {
+void clause_tracker_get_var_unit_clause(const clause_tracker_t *ct, variable_t x, ivector_t *refs) {
   uint32_t index = clause_tracker_list_get_index(ct, x);
-  while (index && n) {
-    n--;
+  while (index) {
+    ivector_push(refs, index);
     index = ct->memory[index].prev;
   }
-  // not found
-  if (index == 0) {
-    return false;
-  }
-  const mcsat_clause_t *clause = clause_tracker_get_clause(ct, ct->memory[index].c_ref);
-  for (uint32_t i = 0; i < clause->size && clause->literals[i]; ++i) {
-    variable_t v = literal_get_variable(clause->literals[i]);
-    assert(clause_tracker_is_tracked(ct, v));
-    if (clause_tracker_is_unit(ct, v)) {
-      ivector_push(constraints, v);
-    } else {
-      assert(trail_has_value(ct->ctx->trail, v));
-      ivector_push(side_conditions, v);
+}
+
+clause_tracker_ref_t clause_tracker_get_new_unit_clause(clause_tracker_t *ct) {
+  assert(ct->memory_pos > 0);
+  while (ct->memory_pos < ct->memory_size) {
+    variable_t var = ct->memory[ct->memory_pos].unit_variable;
+    ct->memory_pos ++;
+    if (var != variable_null) {
+      return ct->memory_pos - 1;
     }
   }
-  return true;
+  return clause_tracker_ref_null;
+}
+
+variable_t clause_tracker_get_unit_variable(const clause_tracker_t *ct, clause_tracker_ref_t ref) {
+  assert(ref > 0 && ref < ct->memory_size);
+  assert(ct->memory[ref].unit_variable != variable_null);
+  return ct->memory[ref].unit_variable;
+}
+
+void clause_tracker_get_constraints(const clause_tracker_t *ct, clause_tracker_ref_t ref, ivector_t *pos, ivector_t *neg) {
+  assert(ref > 0 && ref < ct->memory_size);
+  assert(ct->memory[ref].unit_variable != variable_null);
+
+  const mcsat_clause_t *clause = clause_tracker_get_clause(ct, ct->memory[ref].c_ref);
+  for (uint32_t i = 0; i < clause->size && clause->literals[i]; ++i) {
+    mcsat_literal_t l = clause->literals[i];
+    variable_t v = literal_get_variable(l);
+    bool negated = literal_is_negated(l);
+    assert(clause_tracker_is_tracked(ct, v));
+    if (clause_tracker_is_unit(ct, v)) {
+      assert(clause_tracker_query(ct, v));
+      ivector_push(negated ? neg : pos, v);
+    } else {
+      assert(trail_has_value(ct->ctx->trail, v));
+    }
+  }
+}
+
+void clause_tracker_get_side_conditions(const clause_tracker_t *ct, clause_tracker_ref_t ref, ivector_t *pos, ivector_t *neg) {
+  assert(ref > 0 && ref < ct->memory_size);
+  assert(ct->memory[ref].unit_variable != variable_null);
+
+  const mcsat_clause_t *clause = clause_tracker_get_clause(ct, ct->memory[ref].c_ref);
+  for (uint32_t i = 0; i < clause->size && clause->literals[i]; ++i) {
+    mcsat_literal_t l = clause->literals[i];
+    variable_t v = literal_get_variable(l);
+    bool negated = literal_is_negated(l);
+    assert(clause_tracker_is_tracked(ct, v));
+    if (!clause_tracker_is_unit(ct, v)) {
+      assert(trail_has_value(ct->ctx->trail, v));
+      ivector_push(negated ? neg : pos, v);
+    } else {
+      assert(clause_tracker_query(ct, v));
+    }
+  }
 }
 
 void clause_tracker_push(clause_tracker_t *ct) {
   scope_holder_push(&ct->scope,
                     &ct->memory_size,
+                    &ct->memory_pos,
                     NULL);
 }
 
@@ -404,6 +449,7 @@ void clause_tracker_pop(clause_tracker_t *ct) {
   uint32_t i = ct->memory_size;
   scope_holder_pop(&ct->scope,
                    &ct->memory_size,
+                   &ct->memory_pos,
                    NULL);
 
   // Undo updates and find watchers
