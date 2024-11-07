@@ -58,9 +58,6 @@ void feasible_set_db_push(feasible_set_db_t* db);
 /** Pop the context */
 void feasible_set_db_pop(feasible_set_db_t* db);
 
-
-/** Same as above, but treating the reasons as clause_ref_t */
-void feasible_set_db_get_conflict_reasons_clauses(const feasible_set_db_t* db, variable_t x, ivector_t* reasons_out);
 /**
  * Get the reason for a conflict on x. Feasible set of x should be empty. If aux_ids_out is
  * not NULL, it is filled with all aux_ids of the updates in the minimized conflict.
