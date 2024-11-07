@@ -75,9 +75,6 @@ void
 bv_feasible_set_db_get_reasons(const bv_feasible_set_db_t *db, variable_t x, ivector_t *reasons_out,
                                ivector_t *lemma_reasons, bv_feasible_explain_mode_t mode, ivector_t *aux_ids_out);
 
-/** Return any fixed variables */
-variable_t bv_feasible_set_db_get_fixed(bv_feasible_set_db_t* db);
-
 /** Print the feasible set database */
 void bv_feasible_set_db_print(const bv_feasible_set_db_t* db, FILE* out);
 

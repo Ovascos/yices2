@@ -68,15 +68,6 @@ struct bv_feasible_set_db_s {
   /** Size of the updates array, so that we can backtrack */
   uint32_t updates_size;
 
-  /** All variables that were fixed */
-  ivector_t fixed_variables;
-
-  /** Size of the fixed variables array, for backtracking */
-  uint32_t fixed_variable_size;
-
-  /** Index into the fixed variables */
-  uint32_t fixed_variables_i;
-
   /** The value to manipulate */
   mcsat_value_t tmp_value;
 
@@ -180,15 +171,12 @@ bv_feasible_set_db_t* bv_feasible_set_db_new(plugin_context_t* ctx, bv_bdd_manag
   db->memory_size = 1; // 0 is special null ref
   db->memory_capacity = INITIAL_DB_SIZE;
   db->memory = safe_malloc(sizeof(feasibility_list_element_t)*db->memory_capacity);
-  db->fixed_variable_size = 0;
-  db->fixed_variables_i = 0;
   db->updates_size = 0;
   db->ctx = ctx;
   db->bddm = bddm;
 
   init_int_hmap(&db->var_to_feasible_set_map, 0);
   init_ivector(&db->updates, 0);
-  init_ivector(&db->fixed_variables, 0);
   scope_holder_construct(&db->scope);
 
   mcsat_value_construct_bv_value(&db->tmp_value, NULL);
@@ -207,7 +195,6 @@ void bv_feasible_set_db_delete(bv_feasible_set_db_t* db) {
   mcsat_value_destruct(&db->tmp_value);
   delete_int_hmap(&db->var_to_feasible_set_map);
   delete_ivector(&db->updates);
-  delete_ivector(&db->fixed_variables);
   scope_holder_destruct(&db->scope);
   // Free the memory
   safe_free(db->memory);
@@ -369,12 +356,6 @@ bv_feasible_set_db_update(bv_feasible_set_db_t *db, variable_t x, bdd_t new_set,
   db->updates_size ++;
   assert(db->updates_size == db->updates.size);
 
-  // If fixed, put into the fixed array
-  if (bv_bdd_manager_bdd_is_point(bddm, new_set, x_bitsize)) {
-    ivector_push(&db->fixed_variables, x);
-    db->fixed_variable_size ++;
-  }
-
   if (ctx_trace_enabled(db->ctx, "bv::feasible_set_db")) {
     fprintf(ctx_trace_out(db->ctx), "bv_feasible_set_db_update: after:\n");
     bv_feasible_set_db_print(db, ctx_trace_out(db->ctx));
@@ -387,8 +368,6 @@ bv_feasible_set_db_update(bv_feasible_set_db_t *db, variable_t x, bdd_t new_set,
 void bv_feasible_set_db_push(bv_feasible_set_db_t* db) {
   scope_holder_push(&db->scope,
      &db->updates_size,
-     &db->fixed_variable_size,
-     &db->fixed_variables_i,
      NULL
   );
 }
@@ -402,13 +381,8 @@ void bv_feasible_set_db_pop(bv_feasible_set_db_t* db) {
 
   scope_holder_pop(&db->scope,
       &db->updates_size,
-      &db->fixed_variable_size,
-      &db->fixed_variables_i,
       NULL
   );
-
-  // Undo fixed variables
-  ivector_shrink(&db->fixed_variables, db->fixed_variable_size);
 
   // Undo updates
   while (db->updates.size > db->updates_size) {
@@ -679,14 +653,4 @@ void bv_feasible_set_db_gc_mark(bv_feasible_set_db_t* db, gc_info_t* gc_vars) {
       }
     }
   }
-}
-
-variable_t bv_feasible_set_db_get_fixed(bv_feasible_set_db_t* db) {
-  for (; db->fixed_variables_i < db->fixed_variables.size; ++ db->fixed_variables_i) {
-    variable_t var = db->fixed_variables.data[db->fixed_variables_i];
-    if (!trail_has_value(db->ctx->trail, var)) {
-      return var;
-    }
-  }
-  return variable_null;
 }

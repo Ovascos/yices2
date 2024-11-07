@@ -69,9 +69,6 @@ void ff_feasible_set_db_print(ff_feasible_set_db_t* db, FILE* out);
 /** Print the feasible sets of given variable */
 void ff_feasible_set_db_print_var(ff_feasible_set_db_t* db, variable_t var, FILE* out);
 
-/** Return any fixed variables */
-variable_t ff_feasible_set_db_get_fixed(ff_feasible_set_db_t* db);
-
 /** Marks all the top level reasons */
 void ff_feasible_set_db_gc_mark(ff_feasible_set_db_t* db, gc_info_t* gc_vars);
 
