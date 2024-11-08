@@ -400,7 +400,7 @@ variable_t clause_tracker_get_unit_variable(const clause_tracker_t *ct, clause_t
   return ct->memory[ref].unit_variable;
 }
 
-void clause_tracker_get_constraints(const clause_tracker_t *ct, clause_tracker_ref_t ref, ivector_t *pos, ivector_t *neg) {
+void clause_tracker_get_constraints(const clause_tracker_t *ct, clause_tracker_ref_t ref, ivector_t *constraint) {
   assert(ref > 0 && ref < ct->memory_size);
   assert(ct->memory[ref].unit_variable != variable_null);
 
@@ -408,18 +408,17 @@ void clause_tracker_get_constraints(const clause_tracker_t *ct, clause_tracker_r
   for (uint32_t i = 0; i < clause->size && clause->literals[i]; ++i) {
     mcsat_literal_t l = clause->literals[i];
     variable_t v = literal_get_variable(l);
-    bool negated = literal_is_negated(l);
     assert(clause_tracker_is_tracked(ct, v));
     if (clause_tracker_is_unit(ct, v)) {
       assert(clause_tracker_query(ct, v));
-      ivector_push(negated ? neg : pos, v);
+      ivector_push(constraint, l);
     } else {
       assert(trail_has_value(ct->ctx->trail, v));
     }
   }
 }
 
-void clause_tracker_get_side_conditions(const clause_tracker_t *ct, clause_tracker_ref_t ref, ivector_t *pos, ivector_t *neg) {
+void clause_tracker_get_side_conditions(const clause_tracker_t *ct, clause_tracker_ref_t ref, ivector_t *side_condition) {
   assert(ref > 0 && ref < ct->memory_size);
   assert(ct->memory[ref].unit_variable != variable_null);
 
@@ -427,15 +426,31 @@ void clause_tracker_get_side_conditions(const clause_tracker_t *ct, clause_track
   for (uint32_t i = 0; i < clause->size && clause->literals[i]; ++i) {
     mcsat_literal_t l = clause->literals[i];
     variable_t v = literal_get_variable(l);
-    bool negated = literal_is_negated(l);
     assert(clause_tracker_is_tracked(ct, v));
     if (!clause_tracker_is_unit(ct, v)) {
       assert(trail_has_value(ct->ctx->trail, v));
-      ivector_push(negated ? neg : pos, v);
+      ivector_push(side_condition, l);
     } else {
       assert(clause_tracker_query(ct, v));
     }
   }
+}
+
+bool clause_tracker_is_clause_satisfied(const clause_tracker_t *ct, clause_tracker_ref_t ref) {
+  assert(ref > 0 && ref < ct->memory_size);
+  const mcsat_clause_t *clause = clause_tracker_get_clause(ct, ct->memory[ref].c_ref);
+  for (uint32_t i = 0; i < clause->size && clause->literals[i]; ++i) {
+    mcsat_literal_t l = clause->literals[i];
+    if (literal_is_true(l, ct->ctx->trail)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+clause_ref_t clause_tracker_get_clause_ref(const clause_tracker_t *ct, clause_tracker_ref_t ref) {
+  assert(ref > 0 && ref < ct->memory_size);
+  return ct->memory[ref].c_ref;
 }
 
 void clause_tracker_push(clause_tracker_t *ct) {
