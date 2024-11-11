@@ -23,6 +23,7 @@
 #include "utils/ptr_hash_map.h"
 #include "utils/int_hash_sets.h"
 
+#include "mcsat/tracing.h"
 #include "mcsat/utils/scope_holder.h"
 
 /**
@@ -73,7 +74,7 @@ struct clause_tracker_s {
   scope_holder_t scope;
 };
 
-#define INITIAL_LIST_SIZE 50
+#define INITIAL_LIST_SIZE 25
 
 static inline
 const mcsat_clause_info_interface_t* get_clause_info(const clause_tracker_t* ct) {
@@ -211,6 +212,7 @@ clause_tracker_t* clause_tracker_construct(const plugin_context_t *ctx, const co
   ct->memory_size = 1; // 0 is special null ref
   ct->memory_pos = 1;
   ct->memory[0].c_ref = clause_ref_null;
+  ct->memory[0].unit_variable = variable_null;
 
   return ct;
 }
@@ -238,7 +240,6 @@ bool clause_tracker_is_unit(const clause_tracker_t *ct, variable_t constraint) {
   assert(variable_db_is_boolean(ct->ctx->var_db, constraint));
   bool is_unit = constraint_unit_info_get(ct->unit_info, constraint) == CONSTRAINT_UNIT;
   assert(!is_unit || clause_tracker_query(ct, constraint));
-  assert(!is_unit || !trail_has_value(ct->ctx->trail, constraint));
   return is_unit;
 }
 
@@ -277,6 +278,14 @@ bool clause_tracker_found_unit(clause_tracker_t *ct, clause_ref_t c_ref) {
     assert(clause_tracker_is_tracked(ct, literal_get_variable(c->literals[i])));
   }
 #endif
+
+  if (ctx_trace_enabled(ct->ctx, "clause-tracking")) {
+    ctx_trace_printf(ct->ctx, "Found unit clause: ");
+    clause_print(c, ct->ctx->var_db, ctx_trace_out(ct->ctx));
+    ctx_trace_printf(ct->ctx, "\nwith trail:\n");
+    trail_print(ct->ctx->trail, ctx_trace_out(ct->ctx));
+    ctx_trace_printf(ct->ctx, "\n");
+  }
 
   // find the variable the clause is unit in
   variable_t unit_var = variable_null;
@@ -336,28 +345,40 @@ uint32_t clause_tracker_update_constraint(clause_tracker_t *ct, variable_t const
 }
 
 static
-void clause_tracker_add_clauses_of_constraint(clause_tracker_t *ct, variable_t constraint) {
+uint32_t clause_tracker_add_clauses_of_constraint(clause_tracker_t *ct, variable_t constraint) {
+  uint32_t count = 0;
   // get all clauses where unit_constraint is bool-watching
   ivector_t clauses;
   init_ivector(&clauses, 0);
   clause_tracker_get_clauses(ct, constraint, &clauses);
   for (uint32_t i = 0; i < clauses.size; ++i) {
     clause_ref_t c_ref = clauses.data[i];
+    // if c_ref is boolean-sat, ignore it for now
+    if (clause_is_sat(clause_tracker_get_clause(ct, c_ref), ct->ctx->trail)) {
+      continue;
+    }
     // try to add it to the set of known clauses
     bool new = int_hset_add(&ct->clauses, c_ref);
     if (new) {
       variable_t watcher = clause_watch_update(ct, c_ref);
-      assert(watcher != variable_null);
-      clause_tracker_watcher_add(ct, watcher, c_ref);
+      if (watcher == variable_null) {
+        bool new_unit = clause_tracker_found_unit(ct, c_ref);
+        if (new_unit) count++;
+      } else {
+        clause_tracker_watcher_add(ct, watcher, c_ref);
+      }
     }
   }
   delete_ivector(&clauses);
+  return count;
 }
 
 uint32_t clause_tracker_track_unit_constraint(clause_tracker_t *ct, variable_t constraint) {
   assert(clause_tracker_is_unit(ct, constraint));
-  clause_tracker_add_clauses_of_constraint(ct, constraint);
-  return clause_tracker_update_constraint(ct, constraint);
+  uint32_t count = 0;
+  count += clause_tracker_add_clauses_of_constraint(ct, constraint);
+  count += clause_tracker_update_constraint(ct, constraint);
+  return count;
 }
 
 uint32_t clause_tracker_track_decided_constraint(clause_tracker_t *ct, variable_t constraint) {

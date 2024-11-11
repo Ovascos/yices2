@@ -124,9 +124,6 @@ bool clause_db_is_clause_vector(const clause_db_t* db, const ivector_t* clauses,
 /** Print the literals to the output */
 void literals_print(const mcsat_literal_t* lits, uint32_t size, const variable_db_t* var_db, FILE* out);
 
-/** Print the clause to the output */
-void clause_print(const mcsat_clause_t* C, const variable_db_t* var_db, FILE* out);
-
 /** Swap two literals in a clause */
 static inline
 void clause_swap_literals(mcsat_clause_t* C, uint32_t i, uint32_t j) {

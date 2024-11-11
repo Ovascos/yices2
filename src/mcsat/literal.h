@@ -143,4 +143,6 @@ void literal_set_value(mcsat_literal_t l, trail_token_t* token) {
   }
 }
 
+void literals_print(const mcsat_literal_t* lits, uint32_t size, const variable_db_t* var_db, FILE* out);
+
 #endif /* MCSAT_LITERAL_H_ */

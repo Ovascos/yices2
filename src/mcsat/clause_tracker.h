@@ -91,5 +91,6 @@ void clause_tracker_pop(clause_tracker_t *ct);
 void clause_tracker_reset(clause_tracker_t *ct);
 
 // TODO add GC and clause deletion support
+// TODO this enables further checking (at clause level conflict explanation, if the conditions/side-conditions are still the same of if some conditions have become fully assigned and are side-conditions/satisfying now)
 
 #endif // CLAUSE_TRACKER_H

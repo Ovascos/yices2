@@ -26,6 +26,8 @@
 #endif
 #endif
 
+#define CL
+
 #include <poly/polynomial.h>
 #include <poly/polynomial_context.h>
 #include <poly/variable_db.h>
@@ -46,6 +48,10 @@
 #include "mcsat/utils/lp_utils.h"
 #include "mcsat/watch_list_manager.h"
 
+#ifdef CL
+#include "mcsat/clause_tracker.h"
+#endif
+
 #include "terms/terms.h"
 #include "terms/term_explorer.h"
 #include "utils/int_array_sort2.h"
@@ -59,11 +65,18 @@ bool nra_plugin_has_assignment(const nra_plugin_t* nra, variable_t x) {
 }
 
 static
+bool nra_plugin_clause_tracker_query(void *query_data, variable_t constraint) {
+  nra_plugin_t *nra = (nra_plugin_t*)query_data;
+  return poly_constraint_db_has(nra->constraint_db, constraint);
+}
+
+static
 void nra_plugin_stats_init(nra_plugin_t* nra) {
   // Add statistics
   nra->stats.propagations = statistics_new_int(nra->ctx->stats, "mcsat::nra::propagations");
   nra->stats.conflicts = statistics_new_int(nra->ctx->stats, "mcsat::nra::conflicts");
   nra->stats.conflicts_int = statistics_new_int(nra->ctx->stats, "mcsat::nra::conflicts_int");
+  nra->stats.conflicts_clause = statistics_new_int(nra->ctx->stats, "mcsat::nra::conflicts_clause");
   nra->stats.conflicts_assumption = statistics_new_int(nra->ctx->stats, "mcsat::nra::conflicts_assumption");
   nra->stats.constraints_attached = statistics_new_int(nra->ctx->stats, "mcsat::nra::constraints_attached");
   nra->stats.evaluations = statistics_new_int(nra->ctx->stats, "mcsat::nra::evaluations");
@@ -113,7 +126,7 @@ void nra_plugin_construct(plugin_t* plugin, plugin_context_t* ctx) {
 
   // Clause hinting
   nra->clause_hint_feasible_set_db = feasible_set_db_new(nra);
-  init_int_queue(&nra->clause_hint_queue, 0);
+  nra->clause_hint_tracker = clause_tracker_construct(nra->ctx, &nra->unit_info, nra_plugin_clause_tracker_query, nra);
 
   // libpoly init
   lp_data_init(&nra->lp_data, NULL, nra->ctx);
@@ -192,7 +205,6 @@ void nra_plugin_destruct(plugin_t* plugin) {
   lp_data_destruct(&nra->lp_data);
 
   feasible_set_db_delete(nra->clause_hint_feasible_set_db);
-  delete_int_queue(&nra->clause_hint_queue);
 
   delete_rba_buffer(&nra->buffer);
 }
@@ -372,6 +384,8 @@ void nra_plugin_process_fully_assigned_constraint(nra_plugin_t* nra, trail_token
   }
 }
 
+#if 0
+// TODO maybe useful for some debugging
 /** checks if clause c contains only univariate constraints in x */
 static
 bool nra_plugin_is_clause_univariate(nra_plugin_t* nra, const mcsat_clause_t *c, variable_t x) {
@@ -398,33 +412,9 @@ bool nra_plugin_is_clause_univariate(nra_plugin_t* nra, const mcsat_clause_t *c,
 
   return true;
 }
+#endif
 
-/** Takes a clause univariate in variable x and collects all constraint variables in out
- *  and all other terms in c (false in the current trail) in side_cond. */
-static
-void nra_plugin_get_clause_univariate_constraints(nra_plugin_t *nra, const mcsat_clause_t *c, variable_t x, ivector_t *out, ivector_t *side_cond) {
-  const mcsat_trail_t* trail = nra->ctx->trail;
-
-  assert(!trail_has_value(nra->ctx->trail, x));
-
-  for (uint32_t i = 0; i < c->size && c->literals[i]; ++i) {
-    mcsat_literal_t l = c->literals[i];
-    variable_t constraint = literal_get_variable(l);
-
-    assert(!literal_is_true(l, trail));
-
-    if (literal_is_false(l, trail)) {
-      term_t t = variable_db_get_term(nra->ctx->var_db, constraint);
-      assert(literal_is_negated(l) == trail_get_boolean_value(trail, constraint));
-      ivector_push(side_cond, literal_is_negated(l) ? t : opposite_term(t));
-    } else {
-      assert(!trail_has_value(trail, constraint));
-      assert(constraint_unit_info_get_unit_var(&nra->unit_info, constraint) == x);
-      ivector_push(out, constraint);
-    }
-  }
-}
-
+#if 0
 static
 lp_feasibility_set_t* nra_plugin_clause_feasibility_set(nra_plugin_t* nra, const mcsat_clause_t* c, variable_t x) {
   const mcsat_trail_t* trail = nra->ctx->trail;
@@ -440,8 +430,7 @@ lp_feasibility_set_t* nra_plugin_clause_feasibility_set(nra_plugin_t* nra, const
     }
     variable_t constraint = literal_get_variable(l);
     bool is_negated = literal_is_negated(l);
-    lp_feasibility_set_t *constraint_feasible = nra_plugin_get_feasible_set_of_constraint(nra, constraint, x,
-                                                                                          is_negated);
+    lp_feasibility_set_t *constraint_feasible = nra_plugin_get_feasible_set_of_constraint(nra, constraint, x, is_negated);
     lp_feasibility_set_add(clause_feasible, constraint_feasible);
     lp_feasibility_set_delete(constraint_feasible);
     if (lp_feasibility_set_is_full(clause_feasible)) {
@@ -451,47 +440,93 @@ lp_feasibility_set_t* nra_plugin_clause_feasibility_set(nra_plugin_t* nra, const
 
   return clause_feasible;
 }
+#endif
+
+/** Returns a variable in conflict if there is one. */
+static
+variable_t nra_plugin_clause_value_process_unit_clauses(nra_plugin_t* nra) {
+  // processes all unit clauses found by the tracker
+  clause_tracker_t *ct = nra->clause_hint_tracker;
+
+  variable_t conflict_var = variable_null;
+  int_hset_t variables;
+  init_int_hset(&variables, 0);
+
+  clause_tracker_ref_t ct_ref;
+  ivector_t literals;
+  init_ivector(&literals, 0);
+
+  while ((ct_ref = clause_tracker_get_new_unit_clause(ct))) {
+    variable_t x = clause_tracker_get_unit_variable(ct, ct_ref);
+    clause_tracker_get_constraints(ct, ct_ref, &literals);
+
+    lp_feasibility_set_t *clause_feasible = lp_feasibility_set_new_empty();
+
+    for (uint32_t i = 0; i < literals.size; ++i) {
+      mcsat_literal_t l = literals.data[i];
+      variable_t constraint = literal_get_variable(l);
+      assert(constraint_unit_info_get_unit_var(&nra->unit_info, constraint) == x);
+      lp_feasibility_set_t *constraint_feasible =
+          nra_plugin_get_feasible_set_of_constraint(nra, constraint, x, literal_is_negated(l));
+      lp_feasibility_set_add(clause_feasible, constraint_feasible);
+      lp_feasibility_set_delete(constraint_feasible);
+      if (lp_feasibility_set_is_full(clause_feasible)) {
+        break;
+      }
+    }
+
+    // extract variables from literals
+    for (uint32_t i = 0; i < literals.size; ++i) {
+      literals.data[i] = literal_get_variable(literals.data[i]);
+    }
+
+    // add the feasible set to the db
+    bool feasible = feasible_set_db_update(nra->clause_hint_feasible_set_db, x, clause_feasible,
+                                           literals.data, literals.size, ct_ref);
+    // TODO extend conflict detection to int variables
+    //if (!feasible || (variable_db_is_int(nra->ctx->var_db, x) && !lp_feasibility_set_contains_int(feasible_set_db_get(nra->clause_hint_feasible_set_db, x)))) {
+    if (!feasible) {
+      conflict_var = x;
+      break;
+    }
+
+    int_hset_add(&variables, x);
+    ivector_reset(&literals);
+  }
+
+  delete_ivector(&literals);
+
+  if (false && conflict_var == variable_null) {
+    int_hset_close(&variables);
+    // for each variable that was modified, check if there is a conflict together with the trail
+    for (uint32_t i = 0; i < variables.nelems; ++i) {
+      variable_t x = variables.data[i];
+      const lp_feasibility_set_t *fs_trail = feasible_set_db_get(nra->feasible_set_db, x);
+      if (fs_trail != NULL && !lp_feasibility_set_is_full(fs_trail)) {
+        feasible_set_db_push(nra->clause_hint_feasible_set_db);
+        bool feasible = feasible_set_db_update(nra->clause_hint_feasible_set_db, x, lp_feasibility_set_new_copy(fs_trail),
+                                               literals.data, literals.size, 0);
+        feasible_set_db_pop(nra->clause_hint_feasible_set_db);
+        if (!feasible) {
+          conflict_var = x;
+          break;
+        }
+      }
+    }
+  }
+
+  delete_int_hset(&variables);
+  return conflict_var;
+}
 
 static inline
-void nra_plugin_clause_value_track_unit_constraint(nra_plugin_t* nra, variable_t constraint) {
+void nra_plugin_clause_value_report_unit_constraint(nra_plugin_t* nra, variable_t constraint) {
   assert(constraint_unit_info_get(&nra->unit_info, constraint) == CONSTRAINT_UNIT);
-  int_queue_push(&nra->clause_hint_queue, constraint);
+  assert(poly_constraint_is_valid(poly_constraint_db_get(nra->constraint_db, constraint)));
+  clause_tracker_track_unit_constraint(nra->clause_hint_tracker, constraint);
 }
 
 #if 0
-static
-bool nra_check_clause_level_feasible_set_reasons(nra_plugin_t *nra) {
-#ifdef NDEBUG
-  return true;
-#else
-  const mcsat_clause_info_interface_t* clause_info = nra->ctx->plugin_info->clause_info;
-  ivector_t v;
-  feasible_set_db_iterator_t it;
-
-  init_ivector(&v, 0);
-  feasible_set_db_iterator_construct(&it, nra->clause_hint_feasible_set_db);
-  while (!feasible_set_db_iterator_done(&it)) {
-    variable_t x = feasible_set_db_iterator_get_variable(&it);
-    if (feasible_set_db_get(nra->clause_hint_feasible_set_db, x)) {
-      ivector_reset(&v);
-      feasible_set_db_get_conflict_reasons_clauses(nra->clause_hint_feasible_set_db, x, &v);
-      for (uint32_t j = 0; j < v.size; ++j) {
-        //if (!nra_plugin_is_clause_univariate(nra, clause_info->get_clause(clause_info, v.data[j]), x)) {
-        //  return false;
-        //}
-        const mcsat_clause_t *c = clause_info->get_clause(clause_info, v.data[j]);
-        assert(nra_plugin_is_clause_univariate(nra, c, x));
-      }
-    }
-    feasible_set_db_iterator_next(&it);
-  }
-  feasible_set_db_iterator_destruct(&it);
-  delete_ivector(&v);
-  return true;
-#endif
-}
-#endif
-
 static
 bool nra_plugin_clause_value_process_unit_constraint(nra_plugin_t* nra, variable_t constraint) {
   const mcsat_clause_info_interface_t* clause_info = nra->ctx->plugin_info->clause_info;
@@ -574,13 +609,12 @@ bool nra_plugin_clause_value_process_unit_constraint(nra_plugin_t* nra, variable
   delete_ivector(&clauses);
   return found;
 }
+#endif
 
 /** Gets the feasible set of a variable by combining trail and clause-level feasible sets
  *  @return a copy of the feasible set to be freed by the caller or NULL if both are NULL */
 static
 lp_feasibility_set_t* nra_plugin_get_feasible_set(nra_plugin_t* nra, variable_t x) {
-  // assume that all hints have been processed
-  assert(int_queue_is_empty(&nra->clause_hint_queue));
 
   const lp_feasibility_set_t
         *set_trail = feasible_set_db_get(nra->feasible_set_db, x),
@@ -598,48 +632,71 @@ lp_feasibility_set_t* nra_plugin_get_feasible_set(nra_plugin_t* nra, variable_t 
 }
 
 static
-void nra_plugin_explain_clause_conflict(nra_plugin_t *nra, ivector_t *clauses, variable_t x, ivector_t *conflict) {
-  const mcsat_clause_info_interface_t* clause_info = nra->ctx->plugin_info->clause_info;
-
+void nra_plugin_get_clause_conflict(nra_plugin_t* nra, int_mset_t* pos, int_mset_t* neg, variable_t x, ivector_t* conflict) {
+//void nra_plugin_get_clause_conflict(nra_plugin_t *nra, ivector_t *clauses, variable_t x, ivector_t *conflict) {
   // TODO statistic on number of clauses in the conflict
+  clause_tracker_t *ct = nra->clause_hint_tracker;
 
-  assert(clauses->size > 0);
+  // check if trail is included in the conflict
+  const lp_feasibility_set_t *fs = feasible_set_db_get(nra->clause_hint_feasible_set_db, x);
+  bool incl_trail = !lp_feasibility_set_is_empty(fs);
 
-  for (uint32_t i = 0; i < clauses->size; ++i) {
-    if (clauses->data[i] == clause_ref_null) {
-      // the current trail is part of the conflict
-      // TODO: handle this as well
-      return;
-    }
+  assert(!incl_trail);
+  if (incl_trail) {
+    // TODO add trail feasible_set to clause_hint_feasible_set?
   }
 
   // for each clause
-  ivector_t core, side_cond;
+  ivector_t core, ct_refs;
   init_ivector(&core, 0);
-  init_ivector(&side_cond, 0);
+  init_ivector(&ct_refs, 0);
 
+  feasible_set_db_get_conflict_reasons(nra->clause_hint_feasible_set_db, x, NULL, &core, &core, &ct_refs);
 
-  // Variant 1: get one CAD of all literals
-  // TODO: Variant 2: get one CAD for each clause
-
-  // generate an explanation of the inverse of each clause
-  for (uint32_t i = 0; i < clauses->size; ++i) {
-    clause_ref_t clause_ref = clauses->data[i];
-    assert(clause_ref != clause_ref_null);
-    const mcsat_clause_t *c = clause_info->get_clause(clause_info, clause_ref);
-
-    nra_plugin_get_clause_univariate_constraints(nra, c, x, &core, &side_cond);
+  // print number of ct_refs and actual refs of x in clause tracker
+  if (ctx_trace_enabled(nra->ctx, "nra::clause-level")) {
+    ivector_t tmp;
+    init_ivector(&tmp, 0);
+    clause_tracker_get_var_unit_clause(ct, x, &tmp);
+    assert(ct_refs.size < tmp.size);
+    ctx_trace_printf(nra->ctx, "Explaining clause-level conflict: (%d/%d) ", ct_refs.size, tmp.size);
+    delete_ivector(&tmp);
   }
 
+#ifndef NDEBUG
+  // assert that the unit variables are correct
+  for (uint32_t i = 0; i < ct_refs.size; ++i) {
+    assert(clause_tracker_get_unit_variable(ct, ct_refs.data[i]) == x);
+  }
+  // assert that the whole core is univariant in x
+  for (uint32_t i = 0; i < core.size; ++i) {
+    assert(constraint_unit_info_get_unit_var(&nra->unit_info, core.data[i]) == x);
+  }
+#endif
+
+  // explain the core
   nra_plugin_project(nra, &core, conflict);
 
-  ivector_add(conflict, side_cond.data, side_cond.size);
-
-  delete_ivector(&core);
+  // collect side-conditions
+  ivector_t side_cond;
+  init_ivector(&side_cond, 0);
+  for (uint32_t i = 0; i < ct_refs.size; ++i) {
+    clause_tracker_get_side_conditions(ct, ct_refs.data[i], &side_cond);
+    for (uint32_t j = 0; j < side_cond.size; ++j) {
+      mcsat_literal_t l = side_cond.data[i];
+      assert(literal_is_false(l, nra->ctx->trail));
+      term_t t = variable_db_get_term(nra->ctx->var_db, literal_get_variable(l));
+      ivector_push(conflict, literal_is_negated(l) ? t : opposite_term(t));
+    }
+    ivector_reset(&side_cond);
+  }
   delete_ivector(&side_cond);
 
+  delete_ivector(&core);
+  delete_ivector(&ct_refs);
+
   if (ctx_trace_enabled(nra->ctx, "nra::clause-level")) {
-    ctx_trace_printf(nra->ctx, "Explaining clause-level conflict: ");
+    ctx_trace_printf(nra->ctx, "Explanation: ");
     for (int i = 0; i < conflict->size; ++i) {
       if (i) ctx_trace_printf(nra->ctx, ", ");
       term_print_to_file(ctx_trace_out(nra->ctx), nra->ctx->terms, conflict->data[i]);
@@ -648,6 +705,7 @@ void nra_plugin_explain_clause_conflict(nra_plugin_t *nra, ivector_t *clauses, v
   }
 }
 
+#if 0
 static
 void nra_plugin_clause_value_generate_hints(nra_plugin_t* nra) {
   assert(trail_is_consistent(nra->ctx->trail));
@@ -766,6 +824,7 @@ void nra_plugin_clause_value_generate_hints(nra_plugin_t* nra) {
   feasible_set_db_pop(nra->clause_hint_feasible_set_db);
   delete_int_hset(&xs);
 }
+#endif
 
 static
 void nra_plugin_new_term_notify(plugin_t* plugin, term_t t, trail_token_t* prop) {
@@ -964,15 +1023,15 @@ void nra_plugin_new_term_notify(plugin_t* plugin, term_t t, trail_token_t* prop)
     // Set the status of the constraint
     constraint_unit_info_set(&nra->unit_info, t_var, unit_status == CONSTRAINT_UNIT ? top_var : variable_null, unit_status);
 
+    // Add the constraint to the database
+    nra_poly_constraint_add(nra, t_var);
+
 #ifdef CL
     // In case term is unit, track it
     if (unit_status == CONSTRAINT_UNIT) {
-      nra_plugin_clause_value_track_unit_constraint(nra, t_var);
+      clause_tracker_track_unit_constraint(nra->clause_hint_tracker, t_var);
     }
 #endif
-
-    // Add the constraint to the database
-    nra_poly_constraint_add(nra, t_var);
 
     // Propagate if fully assigned
     if (unit_status == CONSTRAINT_FULLY_ASSIGNED) {
@@ -1156,110 +1215,111 @@ void nra_plugin_process_unit_constraint(nra_plugin_t* nra, trail_token_t* prop, 
     ctx_trace_term(nra->ctx, variable_db_get_term(nra->ctx->var_db, constraint_var));
   }
 
-  // Process if constraint is assigned, or an evaluation constraint
-  bool is_eval_constraint = !variable_db_is_boolean(nra->ctx->var_db, constraint_var);
-  if (is_eval_constraint || trail_has_value(nra->ctx->trail, constraint_var)) {
-    // Get the constraint value
-    bool constraint_value = is_eval_constraint || trail_get_value(nra->ctx->trail, constraint_var)->b;
+  // Process only if constraint is assigned
+  if (!trail_has_value(nra->ctx->trail, constraint_var)) {
+    return;
+  }
 
-    // Get the constraint
-    const poly_constraint_t* constraint = poly_constraint_db_get(nra->constraint_db, constraint_var);
-    if (!poly_constraint_is_valid(constraint)) {
-      return;
-    }
+  // Get the constraint value
+  bool constraint_value = trail_get_value(nra->ctx->trail, constraint_var)->b;
 
-    // Variable of the constraint
-    variable_t x = constraint_unit_info_get_unit_var(&nra->unit_info, constraint_var);
-    assert(x != variable_null);
+  // Get the constraint
+  const poly_constraint_t* constraint = poly_constraint_db_get(nra->constraint_db, constraint_var);
+  if (!poly_constraint_is_valid(constraint)) {
+    return;
+  }
 
-    bool is_negated = !constraint_value;
-    lp_feasibility_set_t* constraint_feasible = nra_plugin_get_feasible_set_of_constraint(nra, constraint_var, x,
-                                                                                          is_negated);
+  // Variable of the constraint
+  variable_t x = constraint_unit_info_get_unit_var(&nra->unit_info, constraint_var);
+  assert(x != variable_null);
 
-    if (ctx_trace_enabled(nra->ctx, "nra::propagate")) {
-      ctx_trace_printf(nra->ctx, "nra: constraint_feasible = ");
-      lp_feasibility_set_print(constraint_feasible, ctx_trace_out(nra->ctx));
-      ctx_trace_printf(nra->ctx, "\n");
-    }
+  bool is_negated = !constraint_value;
+  lp_feasibility_set_t* constraint_feasible = nra_plugin_get_feasible_set_of_constraint(nra, constraint_var, x,
+                                                                                        is_negated);
 
-    // Update the infeasible intervals
-    bool still_feasible = feasible_set_db_update(nra->feasible_set_db, x, constraint_feasible, &constraint_var, 1, 0);
+  if (ctx_trace_enabled(nra->ctx, "nra::propagate")) {
+    ctx_trace_printf(nra->ctx, "nra: constraint_feasible = ");
+    lp_feasibility_set_print(constraint_feasible, ctx_trace_out(nra->ctx));
+    ctx_trace_printf(nra->ctx, "\n");
+  }
 
-    if (ctx_trace_enabled(nra->ctx, "nra::propagate")) {
-      ctx_trace_printf(nra->ctx, "nra: new feasible = ");
-      lp_feasibility_set_print(feasible_set_db_get(nra->feasible_set_db, x), ctx_trace_out(nra->ctx));
-      ctx_trace_printf(nra->ctx, "\n");
-    }
+  // Update the infeasible intervals
+  bool still_feasible = feasible_set_db_update(nra->feasible_set_db, x, constraint_feasible, &constraint_var, 1, 0);
 
-    // If the intervals are empty, we have a conflict
-    if (!still_feasible) {
-      nra_plugin_report_conflict(nra, prop, x);
-    } else {
-      const lp_feasibility_set_t *feasible_set = feasible_set_db_get(nra->feasible_set_db, x);
-      bool x_in_conflict = false;
-      lp_value_t x_value;
-      lp_value_construct_none(&x_value);
-      lp_feasibility_set_pick_value(feasible_set, &x_value);
+  if (ctx_trace_enabled(nra->ctx, "nra::propagate")) {
+    ctx_trace_printf(nra->ctx, "nra: new feasible = ");
+    lp_feasibility_set_print(feasible_set_db_get(nra->feasible_set_db, x), ctx_trace_out(nra->ctx));
+    ctx_trace_printf(nra->ctx, "\n");
+  }
 
-      // If the variable is integer, check that is has an integer solution
-      if (variable_db_is_int(nra->ctx->var_db, x)) {
-        // Check if there is an integer value
-        if (!lp_value_is_integer(&x_value)) {
-          if (nra->conflict_variable_int == variable_null) {
-            nra->conflict_variable_int = x;
-          }
-          x_in_conflict = true;
+  // If the intervals are empty, we have a conflict
+  if (!still_feasible) {
+    nra_plugin_report_conflict(nra, prop, x);
+  } else {
+    const lp_feasibility_set_t *feasible_set = feasible_set_db_get(nra->feasible_set_db, x);
+    bool x_in_conflict = false;
+    lp_value_t x_value;
+    lp_value_construct_none(&x_value);
+    lp_feasibility_set_pick_value(feasible_set, &x_value);
+
+    // If the variable is integer, check that is has an integer solution
+    if (variable_db_is_int(nra->ctx->var_db, x)) {
+      // Check if there is an integer value
+      if (!lp_value_is_integer(&x_value)) {
+        if (nra->conflict_variable_int == variable_null) {
+          nra->conflict_variable_int = x;
         }
+        x_in_conflict = true;
       }
-
-      if (!x_in_conflict && !trail_has_value(nra->ctx->trail, x)) {
-        if (lp_feasibility_set_is_point(feasible_set)) {
-          if (lp_value_is_rational(&x_value)) {
-            if (trail_is_at_base_level(nra->ctx->trail) && !nra->ctx->options->model_interpolation) {
-              mcsat_value_t value;
-              mcsat_value_construct_lp_value(&value, &x_value);
-              prop->add_at_level(prop, x, &value, nra->ctx->trail->decision_level_base);
-              mcsat_value_destruct(&value);
-            } else {
-              if (ctx_trace_enabled(nra->ctx, "nra::propagate")) {
-                ctx_trace_printf(nra->ctx, "nra: hinting variable = %d\n", x);
-              }
-              nra->ctx->hint_next_decision(nra->ctx, x);
-            }
-          }          
-
-        } else if (//variable_db_is_int(nra->ctx->var_db, x) && // turning on for reals as well
-                   !lp_feasibility_set_is_full(feasible_set)) {
-          lp_interval_t x_interval;
-          lp_interval_construct_full(&x_interval); // [-inf, +inf]
-          // now we over-approx the feasible set using an interval and
-          // the result is stored in x_interval, e.g., [1.6, 2.5]
-          // union [4.2, 4.6] is approximated by [1.6, 4.6].
-          feasible_set_db_approximate_value(nra->feasible_set_db, x, &x_interval);
-          int interval_dist = lp_interval_size_approx(&x_interval);
-          if (interval_dist <= 1) {
-            // interval distance of an interval [a, b] is defined as log2(|b - a|) + 1.
-            // interval distance 1 means that the absolute log2 distance
-            // between the upper and lower bound is 1.
-            // Consider the the interval [3,4], the interval distance is 1, and has
-            // two integer value: 3 and 4.
-            // Now consider the interval [5.5, 6.1], the interval distance is 0 and
-            // has one integer value: 6. log2(.6) = log2(6) - log2(10).
-            // Here, we are hinting to the main mcsat solver to decide on this variable
-            // as the possible integer values for the variable is highly likely one.
-            if (lp_value_is_integer(&x_value)) {
-              // it is good idea to decide on this variable (integers or reals)
-              if (ctx_trace_enabled(nra->ctx, "nra::propagate")) {
-                ctx_trace_printf(nra->ctx, "nra: hinting variable = %d\n", x);
-              }
-              nra->ctx->hint_next_decision(nra->ctx, x);
-            }
-          }
-          lp_interval_destruct(&x_interval);
-        }
-      }
-      lp_value_destruct(&x_value);
     }
+
+    if (!x_in_conflict && !trail_has_value(nra->ctx->trail, x)) {
+      if (lp_feasibility_set_is_point(feasible_set)) {
+        if (lp_value_is_rational(&x_value)) {
+          if (trail_is_at_base_level(nra->ctx->trail) && !nra->ctx->options->model_interpolation) {
+            mcsat_value_t value;
+            mcsat_value_construct_lp_value(&value, &x_value);
+            prop->add_at_level(prop, x, &value, nra->ctx->trail->decision_level_base);
+            mcsat_value_destruct(&value);
+          } else {
+            if (ctx_trace_enabled(nra->ctx, "nra::propagate")) {
+              ctx_trace_printf(nra->ctx, "nra: hinting variable = %d\n", x);
+            }
+            nra->ctx->hint_next_decision(nra->ctx, x);
+          }
+        }
+
+      } else if (//variable_db_is_int(nra->ctx->var_db, x) && // turning on for reals as well
+                 !lp_feasibility_set_is_full(feasible_set)) {
+        lp_interval_t x_interval;
+        lp_interval_construct_full(&x_interval); // [-inf, +inf]
+        // now we over-approx the feasible set using an interval and
+        // the result is stored in x_interval, e.g., [1.6, 2.5]
+        // union [4.2, 4.6] is approximated by [1.6, 4.6].
+        feasible_set_db_approximate_value(nra->feasible_set_db, x, &x_interval);
+        int interval_dist = lp_interval_size_approx(&x_interval);
+        if (interval_dist <= 1) {
+          // interval distance of an interval [a, b] is defined as log2(|b - a|) + 1.
+          // interval distance 1 means that the absolute log2 distance
+          // between the upper and lower bound is 1.
+          // Consider the the interval [3,4], the interval distance is 1, and has
+          // two integer value: 3 and 4.
+          // Now consider the interval [5.5, 6.1], the interval distance is 0 and
+          // has one integer value: 6. log2(.6) = log2(6) - log2(10).
+          // Here, we are hinting to the main mcsat solver to decide on this variable
+          // as the possible integer values for the variable is highly likely one.
+          if (lp_value_is_integer(&x_value)) {
+            // it is good idea to decide on this variable (integers or reals)
+            if (ctx_trace_enabled(nra->ctx, "nra::propagate")) {
+              ctx_trace_printf(nra->ctx, "nra: hinting variable = %d\n", x);
+            }
+            nra->ctx->hint_next_decision(nra->ctx, x);
+          }
+        }
+        lp_interval_destruct(&x_interval);
+      }
+    }
+    lp_value_destruct(&x_value);
   }
 }
 
@@ -1371,14 +1431,8 @@ void nra_plugin_process_variable_assignment(nra_plugin_t* nra, trail_token_t* pr
         // Process the constraint
         if (trail_is_consistent(trail)) {
           nra_plugin_process_unit_constraint(nra, prop, constraint_var);
+          nra_plugin_clause_value_report_unit_constraint(nra, constraint_var);
         }
-#ifdef CL
-        // in case no conflict was found during unit processing
-        if (trail_is_consistent(trail)) {
-          // TODO if not required, as we're enqueuing only
-          nra_plugin_clause_value_track_unit_constraint(nra, constraint_var);
-        }
-#endif
       } else {
         // Fully assigned
         constraint_unit_info_set(&nra->unit_info, constraint_var, variable_null, CONSTRAINT_FULLY_ASSIGNED);
@@ -1474,6 +1528,8 @@ void nra_plugin_propagate(plugin_t* plugin, trail_token_t* prop) {
     if (variable_db_is_real(var_db, var) || variable_db_is_int(var_db, var)) {
       // Real variables, detect if the constraint is unit
       nra_plugin_process_variable_assignment(nra, prop, var);
+    } else if (variable_db_is_boolean(var_db, var)) {
+      clause_tracker_track_decided_constraint(nra->clause_hint_tracker, var);
     }
     if (constraint_unit_info_has(&nra->unit_info, var)) {
       constraint_unit_state_t info = constraint_unit_info_get(&nra->unit_info, var);
@@ -1497,11 +1553,14 @@ void nra_plugin_propagate(plugin_t* plugin, trail_token_t* prop) {
     nra_plugin_report_int_conflict(nra, prop, nra->conflict_variable_int);
   }
 
-#ifdef CL
   if (trail_is_consistent(trail)) {
-    nra_plugin_clause_value_generate_hints(nra);
+    // process all detected unit clauses
+    variable_t clause_conflict_var = nra_plugin_clause_value_process_unit_clauses(nra);
+    // raise a conflict in case clause reasoning has lead to an empty feasible set
+    if (clause_conflict_var != variable_null) {
+      nra_plugin_report_clause_conflict(nra, prop, clause_conflict_var);
+    }
   }
-#endif
 
   assert(nra_plugin_check_assignment(nra));
 }
@@ -1521,6 +1580,7 @@ void nra_plugin_decide(plugin_t* plugin, variable_t x, trail_token_t* decide_tok
   if (feasible_clause == NULL) {
     feasible = NULL;
   } else if (lp_feasibility_set_is_empty(feasible_clause) || (is_int_var && !lp_feasibility_set_contains_int(feasible_clause))) {
+    // if it's conflicting, fall back to feasible_set_db only
     feasible = feasible_set_db_get(nra->feasible_set_db, x);
     assert(feasible == NULL || !lp_feasibility_set_is_empty(feasible));
   } else {
@@ -2154,6 +2214,8 @@ void nra_plugin_get_conflict(plugin_t* plugin, ivector_t* conflict) {
     nra_plugin_get_real_conflict(nra, &pos, &neg, nra->conflict_variable, conflict);
   } else if (nra->conflict_variable_int != variable_null) {
     nra_plugin_get_int_conflict(nra, &pos, &neg, nra->conflict_variable_int, conflict);
+  } else if (nra->conflict_variable_clause != variable_null) {
+    nra_plugin_get_clause_conflict(nra, &pos, &neg, nra->conflict_variable_clause, conflict);
   } else if (nra->conflict_variable_assumption != variable_null) {
     nra_plugin_get_assumption_conflict(nra, nra->conflict_variable_assumption, conflict);
   }
@@ -2240,15 +2302,10 @@ void nra_plugin_push(plugin_t* plugin) {
     ctx_trace_printf(nra->ctx, " --- push (%d) ---\n", nra->ctx->trail->decision_level);
   }
 
-#ifdef CL
-  assert(int_queue_is_empty(&nra->clause_hint_queue));
-#endif
-
   lp_data_variable_order_push(&nra->lp_data);
   feasible_set_db_push(nra->feasible_set_db);
-#ifdef CL
   feasible_set_db_push(nra->clause_hint_feasible_set_db);
-#endif
+  clause_tracker_push(nra->clause_hint_tracker);
 }
 
 static
@@ -2296,11 +2353,9 @@ void nra_plugin_pop(plugin_t* plugin) {
   // Pop the feasibility
   feasible_set_db_pop(nra->feasible_set_db);
 
-#ifdef CL
   // Undo the clause level reasoning
   feasible_set_db_pop(nra->clause_hint_feasible_set_db);
-  int_queue_reset(&nra->clause_hint_queue);
-#endif
+  clause_tracker_pop(nra->clause_hint_tracker);
 
   // Unset the conflict
   nra->conflict_variable = variable_null;

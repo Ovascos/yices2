@@ -23,6 +23,7 @@
 #include "mcsat/plugin.h"
 #include "mcsat/unit_info.h"
 #include "mcsat/watch_list_manager.h"
+#include "mcsat/clause_tracker.h"
 #include "mcsat/utils/scope_holder.h"
 #include "mcsat/utils/int_mset.h"
 #include "mcsat/utils/lp_data.h"
@@ -57,6 +58,9 @@ struct nra_plugin_s {
   /** The conflict variable (one with empty int feasible set) */
   variable_t conflict_variable_int;
 
+  /** The conflict variable (with an empty feasible clause set) */
+  variable_t conflict_variable_clause;
+
   /** The conflict variable (assumption not in feasible set) */
   variable_t conflict_variable_assumption;
 
@@ -80,6 +84,7 @@ struct nra_plugin_s {
     statistic_int_t* conflicts;
     statistic_int_t* conflicts_int;
     statistic_int_t* conflicts_assumption;
+    statistic_int_t* conflicts_clause;
     statistic_int_t* constraints_attached;
     statistic_int_t* evaluations;
     statistic_int_t* constraint_regular;
@@ -95,11 +100,11 @@ struct nra_plugin_s {
   /** Data related to libpoly */
   lp_data_t lp_data;
 
+  /** The clause state tracker for the clause level reasoning. */
+  clause_tracker_t* clause_hint_tracker;
+
   /** Map from variables to their feasible sets according to clauses they are unit in */
   feasible_set_db_t* clause_hint_feasible_set_db;
-
-  /** constraints that are unit and need to be processed */
-  int_queue_t clause_hint_queue;
 
   /** Buffer for evaluation */
   int_hmap_t evaluation_value_cache;
@@ -136,6 +141,9 @@ void nra_plugin_report_conflict(nra_plugin_t* nra, trail_token_t* prop, variable
 
 /** Report a conflict (variable is the one with an empty int feasible set) */
 void nra_plugin_report_int_conflict(nra_plugin_t* nra, trail_token_t* prop, variable_t variable);
+
+/** Report a clause-level conflict (variable is either int or real) */
+void nra_plugin_report_clause_conflict(nra_plugin_t* nra, trail_token_t* prop, variable_t variable);
 
 /** Report a conflict (variable is the with value not in feasible set) */
 void nra_plugin_report_assumption_conflict(nra_plugin_t* nra, trail_token_t* prop, variable_t variable, const mcsat_value_t* value);

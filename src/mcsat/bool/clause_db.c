@@ -40,10 +40,6 @@ void literals_print(const mcsat_literal_t* lits, uint32_t size, const variable_d
   fprintf(out, "]");
 }
 
-void clause_print(const mcsat_clause_t* C, const variable_db_t* var_db, FILE* out) {
-  literals_print(C->literals, C->size, var_db, out);
-}
-
 /**
  * Construct the clause given the literals.
  */
