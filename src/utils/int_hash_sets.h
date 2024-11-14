@@ -44,8 +44,11 @@ typedef struct int_hset_s {
   uint32_t *data;
   uint32_t size;
   uint32_t nelems;
+  uint32_t ndeleted;
   bool z_flag;
+  bool o_flag;
   uint32_t resize_threshold;
+  uint32_t cleanup_threshold;
 } int_hset_t;
 
 
@@ -61,11 +64,11 @@ typedef struct int_hset_s {
 
 
 /*
- * Resize threshold: the size is doubled
- * when nelems >= size * RESIZE_RATIO
+ * Ratios: resize_threshold = size * RESIZE_RATIO
+ *         cleanup_threshold = size * CLEANUP_RATIO
  */
 #define INT_HSET_RESIZE_RATIO 0.7
-
+#define INT_HSET_CLEANUP_RATIO 0.2
 
 /*
  * Shrink size: when reset is called, the array is
@@ -113,6 +116,12 @@ extern bool int_hset_member(const int_hset_t *set, uint32_t x);
  */
 extern bool int_hset_add(int_hset_t *set, uint32_t x);
 
+/*
+ * Removes element x from set
+ * - return true if x was in s and has been removed
+ * - return false if x was not in s
+ */
+extern bool int_hset_remove(int_hset_t *set, uint32_t x);
 
 /*
  * Close the set: compact the data

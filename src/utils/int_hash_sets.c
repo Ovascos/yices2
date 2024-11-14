@@ -36,10 +36,14 @@ static bool is_power_of_two(uint32_t n) {
 }
 #endif
 
+enum {
+  EMPTY_VAL = 0,
+  DELETED_VAL = 1
+};
 
 
 /*
- * Initialize: allocate an array of size n
+ * Initialize: allocate an array of size n.
  * n must be a power of two
  */
 void init_int_hset(int_hset_t *set, uint32_t n) {
@@ -57,13 +61,14 @@ void init_int_hset(int_hset_t *set, uint32_t n) {
 
   // initialize all elements of tmp to zero
   tmp = (uint32_t *) safe_malloc(n * sizeof(uint32_t));
-  memset(tmp, 0, n * sizeof(uint32_t));
+  memset(tmp, EMPTY_VAL, n * sizeof(uint32_t));
 
   set->data = tmp;
   set->size = n;
-  set->nelems = 0;
-  set->z_flag = false;
+  set->nelems = set->ndeleted = 0;
+  set->z_flag = set->o_flag = false;
   set->resize_threshold = (uint32_t)(n * INT_HSET_RESIZE_RATIO);
+  set->cleanup_threshold = (uint32_t)(n * INT_HSET_CLEANUP_RATIO);
 }
 
 
@@ -103,7 +108,7 @@ static void hset_insert(uint32_t *a, uint32_t mask, uint32_t x) {
   uint32_t i;
 
   i = hash(x) & mask;
-  while (a[i] != 0) {
+  while (a[i] != EMPTY_VAL && a[i] != DELETED_VAL) {
     i ++;
     i &= mask;
   }
@@ -116,15 +121,16 @@ static void hset_insert(uint32_t *a, uint32_t mask, uint32_t x) {
  * - mask = 2^n - 1 where size of a = 2^n
  * - x must be nonzero
  * - if x is not present, there must be at least one
- *   empty slot in a, otherwise the function loops.
+ *   empty slot in `a`, otherwise the function loops.
  */
 static bool hset_search(const uint32_t *a, uint32_t mask, uint32_t x) {
   uint32_t i;
+  assert(x != EMPTY_VAL && x != DELETED_VAL);
 
   i = hash(x) & mask;
   for (;;) {
     if (a[i] == x) return true;
-    if (a[i] == 0) return false;
+    if (a[i] == EMPTY_VAL) return false;
     i ++;
     i &= mask;
   }
@@ -140,22 +146,52 @@ static bool hset_search(const uint32_t *a, uint32_t mask, uint32_t x) {
  * present)
  */
 static bool hset_add(uint32_t *a, uint32_t mask, uint32_t x) {
-  uint32_t i;
+  uint32_t i, aux;
 
   i = hash(x) & mask;
-  while (a[i] != 0) {
+  for (;;) {
     if (a[i] == x) return false;
+    if (a[i] == EMPTY_VAL || a[i] == DELETED_VAL) break;
     i ++;
     i &= mask;
   }
-  a[i] = x;
+
+  aux = i; // new position
+  while (a[i] != EMPTY_VAL) {
+    i ++;
+    i &= mask;
+    if (a[i] == x) return false;
+  }
+
+  a[aux] = x;
   return true;
 }
 
+/*
+ * Removes x from a if it's present
+ * - return true if x was added
+ * - mask = 2^n - 1, where size of a = 2^n
+ * - x must be > 1
+ *
+ */
+static bool hset_remove(uint32_t *a, uint32_t mask, uint32_t x) {
+  uint32_t i;
+
+  i = hash(x) & mask;
+  while(a[i] != EMPTY_VAL) {
+    if (a[i] == x) {
+      a[i] = DELETED_VAL;
+      return true;
+    }
+    i ++;
+    i &= mask;
+  }
+  return false;
+}
 
 
 /*
- * Double the size of set. keep all elements
+ * Double the size of set. keep all elements but remove deleted
  */
 static void hset_extend(int_hset_t *set) {
   uint32_t n, n2;
@@ -170,13 +206,14 @@ static void hset_extend(int_hset_t *set) {
   }
 
   tmp = (uint32_t *) safe_malloc(n2 * sizeof(uint32_t));
+  if (!tmp) out_of_memory();
   memset(tmp, 0, n2 * sizeof(uint32_t));
 
   // copy set->data into tmp
   mask = n2 - 1;
   for (i=0; i<n; i++) {
     x = set->data[i];
-    if (x != 0) {
+    if (x != EMPTY_VAL && x != DELETED_VAL) {
       hset_insert(tmp, mask, x);
     }
   }
@@ -184,17 +221,46 @@ static void hset_extend(int_hset_t *set) {
   safe_free(set->data);
   set->data = tmp;
   set->size = n2;
+  set->ndeleted = 0;
   set->resize_threshold = (uint32_t)(n2 * INT_HSET_RESIZE_RATIO);
+  set->cleanup_threshold = (uint32_t)(n2 * INT_HSET_CLEANUP_RATIO);
 }
 
+/*
+ * Remove deleted records
+ */
+static void hset_cleanup(int_hset_t *set) {
+  uint32_t *tmp;
+  uint32_t i, n, x, mask;
+
+  n = set->size;
+  tmp = (uint32_t *) safe_malloc(n * sizeof(uint32_t));
+  if (!tmp) out_of_memory();
+  memset(tmp, 0, n * sizeof(uint32_t));
+
+  mask = n - 1;
+  for (i=0; i<n; i++) {
+    x = set->data[i];
+    if (x != EMPTY_VAL && x != DELETED_VAL) {
+      hset_insert(tmp, mask, x);
+    }
+  }
+
+  safe_free(set->data);
+  set->data = tmp;
+  set->ndeleted = 0;
+}
 
 
 /*
  * External function: check whether x is present in set
  */
 bool int_hset_member(const int_hset_t *set, uint32_t x) {
-  if (x == 0) {
+  if (x == EMPTY_VAL) {
     return set->z_flag;
+  }
+  if (x == DELETED_VAL) {
+    return set->o_flag;
   }
   return hset_search(set->data, set->size - 1, x);
 }
@@ -207,16 +273,19 @@ bool int_hset_member(const int_hset_t *set, uint32_t x) {
 bool int_hset_add(int_hset_t *set, uint32_t x) {
   bool result;
 
-  if (x == 0) {
-    result = ! set->z_flag;
+  if (x == EMPTY_VAL) {
+    result = !set->z_flag;
     set->z_flag = true;
+  } else if (x == DELETED_VAL) {
+    result = !set->o_flag;
+    set->o_flag = true;
   } else {
-    assert(set->size > set->nelems);
+    assert(set->size > set->nelems + set->ndeleted);
 
     result = hset_add(set->data, set->size - 1, x);
     if (result) {
       set->nelems ++;
-      if (set->nelems > set->resize_threshold) {
+      if (set->nelems + set->ndeleted >= set->resize_threshold) {
         hset_extend(set);
       }
     }
@@ -225,11 +294,35 @@ bool int_hset_add(int_hset_t *set, uint32_t x) {
   return result;
 }
 
+bool int_hset_remove(int_hset_t *set, uint32_t x) {
+  bool result;
+
+  if (x == EMPTY_VAL) {
+    result = set->z_flag;
+    set->z_flag = false;
+  } else if (x == DELETED_VAL) {
+    result = set->o_flag;
+    set->o_flag = false;
+  } else {
+    assert(set->size > set->nelems);
+    result = hset_remove(set->data, set->size - 1, x);
+    if (result) {
+      set->nelems --;
+      set->ndeleted ++;
+      if (set->ndeleted >= set->cleanup_threshold) {
+        hset_cleanup(set);
+      }
+    }
+  }
+
+  return result;
+}
 
 /*
  * Close the set
  * 1) move all non-zero elements in data[0 ... nelems-1]
  * 2) if z_flag is set, copy 0 into data[nelems], then increment nelems
+ * 3) if o_flag is set, copy 1 into data[nelems], then increment nelems
  */
 void int_hset_close(int_hset_t *set) {
   uint32_t i, j, n, x, *a;
@@ -239,18 +332,19 @@ void int_hset_close(int_hset_t *set) {
   i = 0;
   for (j=0; j<n; j++) {
     x = a[j];
-    if (x != 0) {
-      a[i] = x;
-      i ++;
+    if (x != EMPTY_VAL && x != DELETED_VAL) {
+      a[i++] = x;
     }
   }
 
-  assert(i == set->nelems && i < n);
+  assert(i == set->nelems && i+1 < n);
   if (set->z_flag) {
-    a[i] = 0;
-    i ++;
-    set->nelems = i;
+    a[i++] = EMPTY_VAL;
   }
+  if (set->o_flag) {
+    a[i++] = DELETED_VAL;
+  }
+  set->nelems = i;
 }
 
 
@@ -272,12 +366,13 @@ void int_hset_reset(int_hset_t *set) {
 
     set->size = n;
     set->resize_threshold = (uint32_t)(n * INT_HSET_RESIZE_RATIO);
+    set->cleanup_threshold = (uint32_t)(n * INT_HSET_CLEANUP_RATIO);
   }
 
   for (i=0; i<n; i++) {
     a[i] = 0;
   }
 
-  set->nelems = 0;
-  set->z_flag = false;
+  set->nelems = set->ndeleted = 0;
+  set->z_flag = set->o_flag = false;
 }
