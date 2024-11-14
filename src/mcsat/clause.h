@@ -72,7 +72,7 @@ struct mcsat_clause_info_interface_s {
 
 static inline
 bool clause_is_sat(const mcsat_clause_t *C, const mcsat_trail_t *trail) {
-  for (uint32_t i = 0; i < C->size && C->literals[i]; ++i) {
+  for (uint32_t i = 0; i < C->size; ++i) {
     if (literal_is_true(C->literals[i], trail)) return true;
   }
   return false;
@@ -80,7 +80,7 @@ bool clause_is_sat(const mcsat_clause_t *C, const mcsat_trail_t *trail) {
 
 static inline
 bool clause_is_unsat(const mcsat_clause_t *C, const mcsat_trail_t *trail) {
-  for (uint32_t i = 0; i < C->size && C->literals[i]; ++i) {
+  for (uint32_t i = 0; i < C->size; ++i) {
     if (!literal_is_false(C->literals[i], trail)) return false;
   }
   return true;

@@ -149,6 +149,7 @@ uint32_t clause_info_get_clauses_by_var(const mcsat_clause_info_interface_t* sel
 static
 const mcsat_clause_t* clause_info_get_clause(const mcsat_clause_info_interface_t* self, clause_ref_t ref) {
   bool_plugin_t *plugin = ((mcsat_clause_info_t*)self)->bp;
+  assert(clause_db_is_clause(&plugin->clause_db, ref, true));
   return clause_db_get_clause(&plugin->clause_db, ref);
 }
 
