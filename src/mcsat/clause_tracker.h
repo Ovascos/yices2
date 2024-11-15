@@ -90,6 +90,4 @@ void clause_tracker_pop(clause_tracker_t *ct);
 /** Resets all internal structures and forgets all clauses. Useful after restarts with clause deletion. */
 void clause_tracker_reset(clause_tracker_t *ct);
 
-// TODO add GC and clause deletion support
-
 #endif // CLAUSE_TRACKER_H

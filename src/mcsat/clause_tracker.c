@@ -49,6 +49,8 @@ struct clause_tracker_s {
   /** Pointer to be passed to query. */
   void* query_data;
 
+  mcsat_clause_info_gc_subscriber_t gc_subscriber;
+
   /** All clauses that are known to the tracker */
   int_hset_t clauses;
 
@@ -210,6 +212,49 @@ void clause_tracker_list_push(clause_tracker_t *ct, clause_ref_t c_ref, variable
   }
 }
 
+// GC stuff
+
+void clause_tracker_gc_mark(mcsat_clause_info_gc_subscriber_t *sub, gc_info_t *gc_vars, gc_info_t *gc_clauses) {
+  clause_tracker_t *ct = (clause_tracker_t*)((void*)sub - offsetof(clause_tracker_t, gc_subscriber));
+
+  // no vars to be marked
+  (void)gc_vars;
+
+  // mark all clauses that are unit
+  for (uint32_t i = 1; i < ct->memory_size; ++i) {
+    gc_info_mark(gc_clauses, ct->memory[i].c_ref);
+  }
+}
+
+void clause_tracker_gc_sweep(mcsat_clause_info_gc_subscriber_t *sub, const gc_info_t *gc_vars, const gc_info_t *gc_clauses) {
+  clause_tracker_t *ct = (clause_tracker_t*)((void*)sub - offsetof(clause_tracker_t, gc_subscriber));
+
+  assert(gc_info_is_relocated(gc_vars));
+  assert(gc_info_is_relocated(gc_clauses));
+
+  // update references in list
+  for (uint32_t i = 1; i < ct->memory_size; ++i) {
+    clause_tracker_list_element_t *elem = ct->memory + i;
+    elem->unit_variable = gc_info_get_reloc(gc_vars, elem->unit_variable);
+    elem->c_ref = gc_info_get_reloc(gc_clauses, elem->c_ref);
+    assert(elem->c_ref != clause_ref_null);
+  }
+
+  gc_info_sweep_int_hset(gc_clauses, &ct->clauses);
+  gc_info_sweep_int_hmap_keys(gc_vars, &ct->var_to_list_element);
+
+  // update all watchers
+  gc_info_sweep_ptr_hmap_keys(gc_vars, &ct->watch_list, (ptr_hmap_ptr_delete) delete_int_hset);
+  ptr_hmap_pair_t *p;
+  for (p = ptr_hmap_first_record(&ct->watch_list);
+       p != NULL;
+       p = ptr_hmap_next_record(&ct->watch_list, p)) {
+    int_hset_t *set = p->val;
+    assert(set);
+    gc_info_sweep_int_hset(gc_clauses, set);
+  }
+}
+
 // external functions
 
 clause_tracker_t* clause_tracker_construct(const plugin_context_t *ctx, const constraint_unit_info_t *unit_info,
@@ -228,6 +273,12 @@ clause_tracker_t* clause_tracker_construct(const plugin_context_t *ctx, const co
   init_int_hset(&ct->clauses, 0);
   scope_holder_construct(&ct->scope);
 
+  // register subscriber with bool_plugin
+  ct->gc_subscriber.gc_mark = clause_tracker_gc_mark;
+  ct->gc_subscriber.gc_sweep = clause_tracker_gc_sweep;
+  const mcsat_clause_info_interface_t *info = get_clause_info(ct);
+  info->register_gc(info, &ct->gc_subscriber);
+
   // init memory
   ct->memory_capacity = INITIAL_LIST_SIZE;
   ct->memory = safe_malloc(sizeof(clause_tracker_list_element_t) * INITIAL_LIST_SIZE);
@@ -240,6 +291,11 @@ clause_tracker_t* clause_tracker_construct(const plugin_context_t *ctx, const co
 }
 
 void clause_tracker_delete(clause_tracker_t *ct) {
+  // unregister from bool_plugin
+  const mcsat_clause_info_interface_t *info = get_clause_info(ct);
+  info->unregister_gc(info, &ct->gc_subscriber);
+
+  // delete the rest
   clause_tracker_watchers_delete(ct);
   delete_ptr_hmap(&ct->watch_list);
   delete_int_hmap(&ct->var_to_list_element);
