@@ -175,6 +175,24 @@ void gc_info_sweep_int_hmap_values(const gc_info_t* gc, int_hmap_t* objs) {
   *objs = new_objs;
 }
 
+void gc_info_sweep_int_hset(const gc_info_t* gc, int_hset_t *objs) {
+  int_hset_t new_objs;
+  init_int_hset(&new_objs, 0);
+
+  int_hset_close(objs);
+  for (uint32_t i = 0; i < objs->nelems; ++i) {
+    uint32_t old_val = objs->data[i];
+    uint32_t new_val = gc_info_get_reloc(gc, old_val);
+    if (new_val != gc->null_value) {
+      int_hset_add(&new_objs, new_val);
+    }
+  }
+
+  // Destroy and swap in
+  delete_int_hset(objs);
+  *objs = new_objs;
+}
+
 void gc_info_set_relocated(gc_info_t* gc) {
   assert(gc->is_relocated == false);
   gc->is_relocated = true;

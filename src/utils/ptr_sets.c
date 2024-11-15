@@ -506,7 +506,7 @@ void ptr_set_iterate(ptr_set_t *s, void *aux, ptr_set_iterator_t f) {
     for (i=0; i<n; i++) {
       p = s->data[i];
       if (live_ptr_elem(p)) {
-	f(aux, p);
+        f(aux, p);
       }
     }
   }
