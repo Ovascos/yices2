@@ -41,6 +41,15 @@ typedef int32_t clause_ref_t;
 #define clause_ref_null 0
 
 
+typedef struct mcsat_clause_info_gc_interface_s mcsat_clause_info_gc_subscriber_t;
+
+struct mcsat_clause_info_gc_interface_s {
+
+  void (*gc_mark)(mcsat_clause_info_gc_subscriber_t *self, gc_info_t *clause_gc, gc_info_t *var_gc);
+
+  void (*gc_sweep)(mcsat_clause_info_gc_subscriber_t *self, const gc_info_t *clause_gc, const gc_info_t *var_gc);
+};
+
 /**
  * While the boolean plugin is responsible for clause handling, other plugins can use this interface
  * to get read-only information about clauses.
@@ -65,6 +74,16 @@ struct mcsat_clause_info_interface_s {
    * Gets the clause with the given reference.
    */
   const mcsat_clause_t* (*get_clause) (const mcsat_clause_info_interface_t* self, clause_ref_t ref);
+
+  /**
+   * Register a GC callback that is called whenever the clause provider performs a GC run.
+   */
+  void (*register_gc) (const mcsat_clause_info_interface_t* self, mcsat_clause_info_gc_subscriber_t *gc_info);
+
+  /**
+   * Unregisters a GC callback.
+   */
+  void (*unregister_gc) (const mcsat_clause_info_interface_t* self, mcsat_clause_info_gc_subscriber_t *gc_info);
 
 };
 

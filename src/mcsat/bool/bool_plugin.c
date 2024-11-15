@@ -25,6 +25,7 @@
 #include "mcsat/tracing.h"
 
 #include "utils/int_array_sort2.h"
+#include "utils/ptr_sets.h"
 #include "mcsat/utils/scope_holder.h"
 
 typedef struct bool_plugin_s bool_plugin_t;
@@ -32,6 +33,7 @@ typedef struct bool_plugin_s bool_plugin_t;
 typedef struct {
   mcsat_clause_info_interface_t info;
   bool_plugin_t* bp;
+  ptr_set_t* gc_subs;
 } mcsat_clause_info_t;
 
 struct bool_plugin_s {
@@ -153,15 +155,41 @@ const mcsat_clause_t* clause_info_get_clause(const mcsat_clause_info_interface_t
   return clause_db_get_clause(&plugin->clause_db, ref);
 }
 
+static
+void clause_info_register_gc(const mcsat_clause_info_interface_t* self, mcsat_clause_info_gc_subscriber_t* gc_sub) {
+  ptr_set_t *gc_subs = ((mcsat_clause_info_t*)self)->gc_subs;
+  ptr_set_add(&gc_subs, gc_sub);
+}
+
+static
+void clause_info_unregister_gc(const mcsat_clause_info_interface_t* self, mcsat_clause_info_gc_subscriber_t* gc_sub) {
+  ptr_set_t *gc_subs = ((mcsat_clause_info_t*)self)->gc_subs;
+  ptr_set_remove(&gc_subs, gc_sub);
+}
+
 // init the plugin
 
 static
-plugin_info_provider_t bool_plugin_clause_info_init(bool_plugin_t* bp) {
+void bool_plugin_clause_info_init(bool_plugin_t* bp) {
   mcsat_clause_info_t* info = &bp->clause_info;
   info->bp = bp;
+  info->gc_subs = new_ptr_set();
   info->info.get_clause = clause_info_get_clause;
   info->info.get_clauses_by_literal = clause_info_get_clauses_by_literal;
   info->info.get_clauses_by_var = clause_info_get_clauses_by_var;
+  info->info.register_gc = clause_info_register_gc;
+  info->info.unregister_gc = clause_info_unregister_gc;
+}
+
+static
+void bool_plugin_clause_info_delete(bool_plugin_t* bp) {
+  mcsat_clause_info_t* info = &bp->clause_info;
+  free_ptr_set(info->gc_subs);
+}
+
+static
+plugin_info_provider_t bool_plugin_clause_info_get(bool_plugin_t* bp) {
+  mcsat_clause_info_t* info = &bp->clause_info;
   return (plugin_info_provider_t){ .type=PLUGIN_INFO_CLAUSE, .info.clause_info=(mcsat_clause_info_interface_t*)info };
 }
 
@@ -177,12 +205,12 @@ static
 void bool_plugin_heuristics_init(bool_plugin_t* bp) {
   // Clause scoring
   bp->heuristic_params.clause_score_bump_factor = 1;
-  bp->heuristic_params.clause_score_decay_factor = 0.999;
-  bp->heuristic_params.clause_score_limit = 1e20;
+  bp->heuristic_params.clause_score_decay_factor = 0.999f;
+  bp->heuristic_params.clause_score_limit = 1e20f;
 
   // Clause database compact
   bp->heuristic_params.lemma_limit_init = 1000;
-  bp->heuristic_params.lemma_limit_factor = 1.05;
+  bp->heuristic_params.lemma_limit_factor = 1.05f;
 
   // Bool var scoring
   bp->heuristic_params.bool_var_bump_factor = 5;
@@ -202,6 +230,7 @@ void bool_plugin_construct(plugin_t* plugin, plugin_context_t* ctx) {
   bcp_watch_manager_construct(&bp->wlm);
   init_ivector(&bp->reason, 0);
   init_ivector(&bp->propagated, 0);
+  bool_plugin_clause_info_init(bp);
 
   bp->trail_i = 0;
   bp->propagated_size = 0;
@@ -216,7 +245,7 @@ void bool_plugin_construct(plugin_t* plugin, plugin_context_t* ctx) {
 
   ctx->request_decision_calls(ctx, BOOL_TYPE);
 
-  ctx->register_plugin_info_provider(ctx, bool_plugin_clause_info_init(bp));
+  ctx->register_plugin_info_provider(ctx, bool_plugin_clause_info_get(bp));
 
   scope_holder_construct(&bp->scope);
   // CONSTRUCTED ON DEMAND: gc_info_construct(&bp->gc_clauses, clause_ref_null);
@@ -238,6 +267,7 @@ void bool_plugin_destruct(plugin_t* plugin) {
   delete_ivector(&bp->reason);
   delete_ivector(&bp->propagated);
   scope_holder_destruct(&bp->scope);
+  bool_plugin_clause_info_delete(bp);
   // DESTRUCTED ON DEMAND: gc_info_destruct(&bp->gc_clauses);
 }
 
@@ -754,6 +784,7 @@ void bool_plugin_decide(plugin_t* plugin, variable_t x, trail_token_t* decide, b
   literal_set_value(literal, decide);
 }
 
+static
 void bool_plugin_get_conflict(plugin_t* plugin, ivector_t* conflict) {
   bool_plugin_t* bp = (bool_plugin_t*) plugin;
 
@@ -782,6 +813,7 @@ void bool_plugin_get_conflict(plugin_t* plugin, ivector_t* conflict) {
   }
 }
 
+static
 term_t bool_plugin_explain_propagation(plugin_t* plugin, variable_t var, ivector_t* reasons) {
   bool_plugin_t* bp = (bool_plugin_t*) plugin;
 
@@ -822,6 +854,7 @@ term_t bool_plugin_explain_propagation(plugin_t* plugin, variable_t var, ivector
   return bool2term(var_value);
 }
 
+static
 bool bool_plugin_explain_evaluation(plugin_t* plugin, term_t t, int_mset_t* vars, mcsat_value_t* value) {
 
   bool_plugin_t* bp = (bool_plugin_t*) plugin;
@@ -872,6 +905,7 @@ bool bool_plugin_explain_evaluation(plugin_t* plugin, term_t t, int_mset_t* vars
   return false;
 }
 
+static
 void bool_plugin_push(plugin_t* plugin) {
   bool_plugin_t* bp = (bool_plugin_t*) plugin;
 
@@ -883,6 +917,7 @@ void bool_plugin_push(plugin_t* plugin) {
       NULL);
 }
 
+static
 void bool_plugin_pop(plugin_t* plugin) {
   bool_plugin_t* bp = (bool_plugin_t*) plugin;
 
@@ -918,6 +953,26 @@ bool bool_plugin_clause_compare_for_removal(void *data, clause_ref_t c1, clause_
   return c1_tag->score > c2_tag->score;
 }
 
+typedef struct {
+  gc_info_t *vars;
+  gc_info_t *clauses;
+} gc_tuple_t;
+
+static
+void call_gc_subscriber_mark(void* gc_tuple, void* sub) {
+  mcsat_clause_info_gc_subscriber_t *subscriber = (mcsat_clause_info_gc_subscriber_t*)sub;
+  gc_tuple_t *gct = (gc_tuple_t*) gc_tuple;
+  subscriber->gc_mark(subscriber, gct->clauses, gct->vars);
+}
+
+static
+void call_gc_subscriber_sweep(void* gc_tuple, void* sub) {
+  mcsat_clause_info_gc_subscriber_t *subscriber = (mcsat_clause_info_gc_subscriber_t*)sub;
+  gc_tuple_t *gct = (gc_tuple_t*) gc_tuple;
+  subscriber->gc_sweep(subscriber, gct->clauses, gct->vars);
+}
+
+static
 void bool_plugin_gc_mark(plugin_t* plugin, gc_info_t* gc_vars) {
 
   bool_plugin_t* bp = (bool_plugin_t*) plugin;
@@ -981,8 +1036,13 @@ void bool_plugin_gc_mark(plugin_t* plugin, gc_info_t* gc_vars) {
 
   // Mark all variables through the clause database
   clause_db_gc_mark(db, &bp->gc_clauses, gc_vars);
+
+  // call all subscribers
+  gc_tuple_t gct = { .clauses = &bp->gc_clauses, .vars = gc_vars };
+  ptr_set_iterate(bp->clause_info.gc_subs, &gct, call_gc_subscriber_mark);
 }
 
+static
 void bool_plugin_gc_sweep(plugin_t* plugin, const gc_info_t* gc_vars) {
 
   bool_plugin_t* bp = (bool_plugin_t*) plugin;
@@ -1025,7 +1085,7 @@ void bool_plugin_gc_sweep(plugin_t* plugin, const gc_info_t* gc_vars) {
       bool_plugin_set_reason_ref(bp, var, clause_ref_null);
     } else {
       // The clausal reason for var propagation
-      clause = bp->reason.data[var]; // Getting directly, not a valud reason anymore
+      clause = bp->reason.data[var]; // Getting directly, not a valid reason anymore
       clause_reloc = gc_info_get_reloc(&bp->gc_clauses, clause);
       assert(clause_reloc != clause_ref_null);
       bool_plugin_set_reason_ref(bp, var, clause_reloc);
@@ -1034,6 +1094,10 @@ void bool_plugin_gc_sweep(plugin_t* plugin, const gc_info_t* gc_vars) {
 
   // Propagated vector
   gc_info_sweep_ivector(gc_vars, &bp->propagated);
+
+  // call all subscribers
+  gc_tuple_t gct = { .clauses = &bp->gc_clauses, .vars = (gc_info_t*)gc_vars };
+  ptr_set_iterate(bp->clause_info.gc_subs, &gct, call_gc_subscriber_sweep);
 
   // Destroy the gc info (constructed in mark())
   gc_info_destruct(&bp->gc_clauses);
