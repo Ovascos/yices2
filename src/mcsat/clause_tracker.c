@@ -316,9 +316,7 @@ void clause_tracker_reset(clause_tracker_t *ct) {
 static inline
 bool clause_tracker_is_unit(const clause_tracker_t *ct, variable_t constraint) {
   assert(variable_db_is_boolean(ct->ctx->var_db, constraint));
-  bool is_unit = constraint_unit_info_get(ct->unit_info, constraint) == CONSTRAINT_UNIT;
-  assert(!is_unit || clause_tracker_query(ct, constraint));
-  return is_unit;
+  return clause_tracker_query(ct, constraint) && constraint_unit_info_get(ct->unit_info, constraint) == CONSTRAINT_UNIT;
 }
 
 static inline
@@ -358,6 +356,7 @@ bool clause_watch_update(clause_tracker_t *ct, clause_ref_t c_ref) {
     if (trail_has_value(ct->ctx->trail, v)) {
       continue;
     }
+    assert(clause_tracker_is_unit(ct, v));
     variable_t u = constraint_unit_info_get_unit_var(ct->unit_info, v);
     assert(u != variable_null);
     if (u != unit_var) {
@@ -486,32 +485,8 @@ void clause_tracker_get_constraints(const clause_tracker_t *ct, clause_tracker_r
   const mcsat_clause_t *clause = clause_tracker_get_clause(ct, ct->memory[ref].c_ref);
   for (uint32_t i = 0; i < clause->size && clause->literals[i]; ++i) {
     mcsat_literal_t l = clause->literals[i];
-    variable_t v = literal_get_variable(l);
-    assert(clause_tracker_is_tracked(ct, v));
-    if (clause_tracker_is_unit(ct, v)) {
-      assert(clause_tracker_query(ct, v));
-      ivector_push(constraint, l);
-    } else {
-      assert(trail_has_value(ct->ctx->trail, v));
-    }
-  }
-}
-
-void clause_tracker_get_side_conditions(const clause_tracker_t *ct, clause_tracker_ref_t ref, ivector_t *side_condition) {
-  assert(ref > 0 && ref < ct->memory_size);
-  assert(ct->memory[ref].unit_variable != variable_null);
-
-  const mcsat_clause_t *clause = clause_tracker_get_clause(ct, ct->memory[ref].c_ref);
-  for (uint32_t i = 0; i < clause->size && clause->literals[i]; ++i) {
-    mcsat_literal_t l = clause->literals[i];
-    variable_t v = literal_get_variable(l);
-    assert(clause_tracker_is_tracked(ct, v));
-    if (!clause_tracker_is_unit(ct, v)) {
-      assert(trail_has_value(ct->ctx->trail, v));
-      ivector_push(side_condition, l);
-    } else {
-      assert(clause_tracker_query(ct, v));
-    }
+    assert(clause_tracker_is_tracked(ct, literal_get_variable(l)));
+    ivector_push(constraint, l);
   }
 }
 
@@ -532,6 +507,10 @@ clause_ref_t clause_tracker_get_clause_ref(const clause_tracker_t *ct, clause_tr
   return ct->memory[ref].c_ref;
 }
 
+const mcsat_clause_t* clause_tracker_get_mcsat_clause(const clause_tracker_t *ct, clause_tracker_ref_t ref) {
+  return clause_tracker_get_clause(ct, clause_tracker_get_clause_ref(ct, ref));
+}
+
 void clause_tracker_push(clause_tracker_t *ct) {
   scope_holder_push(&ct->scope,
                     &ct->memory_size,
@@ -550,6 +529,7 @@ void clause_tracker_pop(clause_tracker_t *ct) {
   assert(i >= ct->memory_size);
   while (--i >= ct->memory_size) {
     clause_tracker_list_element_t *e = ct->memory + i;
+    assert(e->unit_variable != 0 || e->prev == 0);
 
     // update watches
     bool unit = clause_watch_update(ct, e->c_ref);

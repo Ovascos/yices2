@@ -68,17 +68,17 @@ clause_tracker_ref_t clause_tracker_get_new_unit_clause(clause_tracker_t *ct);
 /** Gets the unit variable of a unit clause. */
 variable_t clause_tracker_get_unit_variable(const clause_tracker_t *ct, clause_tracker_ref_t ref);
 
-/** Gets the c-unit literals of a unit clause. */
+/** Gets the literals of a unit clause. They're all either c-unit in a variable x or on the trail. */
 void clause_tracker_get_constraints(const clause_tracker_t *ct, clause_tracker_ref_t ref, ivector_t *constraint);
-
-/** Gets the side-conditions of a unit clause, i.e. clause literals that are non-c-unit and on the trail. */
-void clause_tracker_get_side_conditions(const clause_tracker_t *ct, clause_tracker_ref_t ref, ivector_t *side_condition);
 
 /** Checks if the clause is fulfilled in the current trail. */
 bool clause_tracker_is_clause_satisfied(const clause_tracker_t *ct, clause_tracker_ref_t ref);
 
 /** Gets the clause_ref of a clause_tracker_ref. Intended for debugging. */
 clause_ref_t clause_tracker_get_clause_ref(const clause_tracker_t *ct, clause_tracker_ref_t ref);
+
+/** Gets the clause of a clause_tracker_ref. Intended for debugging. */
+const mcsat_clause_t* clause_tracker_get_mcsat_clause(const clause_tracker_t *ct, clause_tracker_ref_t ref);
 
 /** Pushes the clause level information. */
 void clause_tracker_push(clause_tracker_t *ct);
