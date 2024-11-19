@@ -84,6 +84,10 @@ typedef struct int_hset_s {
  */
 extern void init_int_hset(int_hset_t *set, uint32_t n);
 
+/*
+ * Initializes a new hset with the copy of an existing set.
+ */
+extern void init_int_hset_copy(int_hset_t *set, const int_hset_t *src);
 
 /*
  * Free memory
@@ -95,7 +99,7 @@ extern void delete_int_hset(int_hset_t *set);
  * Check whether s is empty
  */
 static inline bool int_hset_is_nonempty(const int_hset_t *set) {
-  return (set->z_flag || set->nelems > 0);
+  return (set->z_flag || set->o_flag || set->nelems > 0);
 }
 
 static inline bool int_hset_is_empty(const int_hset_t *set) {

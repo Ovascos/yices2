@@ -71,6 +71,18 @@ void init_int_hset(int_hset_t *set, uint32_t n) {
   set->cleanup_threshold = (uint32_t)(n * INT_HSET_CLEANUP_RATIO);
 }
 
+void init_int_hset_copy(int_hset_t *set, const int_hset_t *src) {
+  uint32_t *tmp;
+  uint32_t n;
+
+  n = src->size;
+  tmp = (uint32_t *) safe_malloc(n * sizeof(uint32_t));
+  if (!tmp) out_of_memory();
+  memcpy(tmp, src->data, n * sizeof(uint32_t));
+
+  *set = *src;
+  set->data = tmp;
+}
 
 /*
  * Delete: free the array
