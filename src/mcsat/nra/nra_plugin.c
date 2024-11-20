@@ -1328,16 +1328,16 @@ void nra_plugin_propagate(plugin_t* plugin, trail_token_t* prop) {
     nra_plugin_report_int_conflict(nra, prop, nra->conflict_variable_int);
   }
 
+#ifdef CL
   if (trail_is_consistent(trail)) {
     // process all detected unit clauses
     variable_t clause_conflict_var = nra_plugin_clause_value_process_unit_clauses(nra);
     // raise a conflict in case clause reasoning has lead to an empty feasible set
-#ifdef CL
     if (clause_conflict_var != variable_null) {
       nra_plugin_report_clause_conflict(nra, prop, clause_conflict_var);
     }
-#endif
   }
+#endif
 
   assert(nra_plugin_check_assignment(nra));
 }
