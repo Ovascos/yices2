@@ -995,7 +995,7 @@ void bool_plugin_gc_mark(plugin_t* plugin, gc_info_t* gc_vars) {
     int_array_sort2(bp->lemmas.data, bp->lemmas.size, (void*) db, bool_plugin_clause_compare_for_removal);
 
     // avg activity score
-    act_threshold = bp->heuristic_params.clause_score_bump_factor / bp->lemmas.size;
+    act_threshold = bp->heuristic_params.clause_score_bump_factor / (float)bp->lemmas.size;
 
     // Mark all the variables in half of lemmas as used
     for (i = 0; i < bp->lemmas.size / 2; ++ i) {
@@ -1142,7 +1142,7 @@ void bool_plugin_event_notify(plugin_t* plugin, plugin_notify_kind_t kind) {
     break;
   case MCSAT_SOLVER_POP:
     // Remove all learnt clauses above base level, regular clauses will be
-    // removed trhough garbage collection
+    // removed through garbage collection
     bool_plugin_remove_stale_clauses(bp);
     break;
   default:

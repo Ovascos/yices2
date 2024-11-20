@@ -88,6 +88,16 @@ void clause_db_destruct(clause_db_t* db) {
   safe_free(db->memory);
 }
 
+void clause_db_print(const clause_db_t* db, FILE* out) {
+  for (uint32_t i = 0; i < db->clauses.size; ++i) {
+    clause_ref_t ref = db->clauses.data[i];
+    const mcsat_clause_t* C = clause_db_get_clause(db, ref);
+    fprintf(out, "%04d ", ref);
+    clause_print(C, db->var_db, out);
+    fprintf(out, "\n");
+  }
+}
+
 void clause_db_print_clause(const clause_db_t* db, clause_ref_t ref, FILE* out) {
   const mcsat_clause_t* C = clause_db_get_clause(db, ref);
   clause_print(C, db->var_db, out);
@@ -189,8 +199,8 @@ clause_ref_t clause_db_new_clause(clause_db_t* db, const mcsat_literal_t* litera
   clause_ref = clause_get_ref(db, clause_memory);
 
   // Remember the clause
-  assert(clause_db_is_clause(db, clause_ref, true));
   ivector_push(&db->clauses, clause_ref);
+  assert(clause_db_is_clause(db, clause_ref, true));
 
   // Return the reference
   return clause_ref;

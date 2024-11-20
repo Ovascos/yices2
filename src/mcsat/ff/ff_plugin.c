@@ -151,10 +151,7 @@ const mcsat_value_t* ff_plugin_constraint_evaluate(ff_plugin_t* ff, variable_t c
 
   // Check if it is a valid constraints
   const poly_constraint_t* cstr = poly_constraint_db_get(ff->constraint_db, cstr_var);
-  if (!poly_constraint_is_valid(cstr)) {
-    return NULL;
-  }
-  assert(!poly_constraint_is_root_constraint(cstr));
+  assert(!poly_constraint_is_root_constraint(cstr) && poly_constraint_is_valid(cstr));
 
   // Constraint var list
   variable_list_ref_t var_list_ref = watch_list_manager_get_list_of(&ff->wlm, cstr_var);

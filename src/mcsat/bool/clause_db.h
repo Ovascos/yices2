@@ -94,8 +94,11 @@ void clause_db_destruct(clause_db_t* db);
 /** Create a new clause given literals */
 clause_ref_t clause_db_new_clause(clause_db_t* db, const mcsat_literal_t* literals, uint32_t size, mcsat_clause_tag_t tag);
 
+/** Print the whole clause db to the stream */
+void clause_db_print(const clause_db_t* db, FILE* out);
+
 /** Print the clause to the stream */
-void clause_db_print_clause(const clause_db_t* var_db, clause_ref_t C, FILE* out);
+void clause_db_print_clause(const clause_db_t* db, clause_ref_t C, FILE* out);
 
 /** Get the actual clause */
 mcsat_clause_t* clause_db_get_clause(const clause_db_t* db, clause_ref_t C);
