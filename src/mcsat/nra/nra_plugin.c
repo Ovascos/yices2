@@ -200,6 +200,8 @@ void nra_plugin_destruct(plugin_t* plugin) {
 
   feasible_set_db_delete(nra->clause_hint_feasible_set_db);
 
+  clause_tracker_delete(nra->clause_hint_tracker);
+
   delete_rba_buffer(&nra->buffer);
 }
 
@@ -378,6 +380,7 @@ void nra_plugin_process_fully_assigned_constraint(nra_plugin_t* nra, trail_token
   }
 }
 
+#ifdef CL
 /** Returns a variable in conflict if there is one. */
 static
 variable_t nra_plugin_clause_value_process_unit_clauses(nra_plugin_t* nra) {
@@ -471,6 +474,7 @@ variable_t nra_plugin_clause_value_process_unit_clauses(nra_plugin_t* nra) {
   delete_int_hset(&variables);
   return conflict_var;
 }
+#endif
 
 static inline
 void nra_plugin_clause_value_report_unit_constraint(nra_plugin_t* nra, variable_t constraint) {
@@ -514,7 +518,11 @@ lp_feasibility_set_t* nra_plugin_get_feasible_set(nra_plugin_t* nra, variable_t 
 
 static
 void nra_plugin_get_clause_conflict(nra_plugin_t* nra, int_mset_t* pos, int_mset_t* neg, variable_t x, ivector_t* conflict) {
-//void nra_plugin_get_clause_conflict(nra_plugin_t *nra, ivector_t *clauses, variable_t x, ivector_t *conflict) {
+
+#ifndef CL
+  assert(false);
+#endif
+
   // TODO statistic on number of clauses in the conflict
   clause_tracker_t *ct = nra->clause_hint_tracker;
 

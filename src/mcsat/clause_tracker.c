@@ -290,7 +290,8 @@ clause_tracker_t* clause_tracker_construct(const plugin_context_t *ctx, const co
 void clause_tracker_delete(clause_tracker_t *ct) {
   // unregister from bool_plugin
   const mcsat_clause_info_interface_t *info = get_clause_info(ct);
-  info->unregister_gc(info, &ct->gc_subscriber);
+  if (info->unregister_gc)
+    info->unregister_gc(info, &ct->gc_subscriber);
 
   // delete the rest
   clause_tracker_watchers_delete(ct);
@@ -516,6 +517,10 @@ const mcsat_clause_t* clause_tracker_get_mcsat_clause(const clause_tracker_t *ct
 #ifndef NDEBUG
 static 
 bool clause_tracker_check(const clause_tracker_t *ct) {
+  if (!ctx_trace_enabled(ct->ctx, "clause-tracker::check")) {
+    return true;
+  }
+
   int_hset_t watched;
   init_int_hset_copy(&watched, &ct->clauses);
 
@@ -585,6 +590,8 @@ void clause_tracker_pop(clause_tracker_t *ct) {
                    &ct->memory_size,
                    &ct->memory_pos,
                    NULL);
+
+  // TODO delete a clause if nothing is unit any more? To avoid keeping clauses that are otherwise deleted.
 
   // Undo updates and find watchers
   assert(i >= ct->memory_size);

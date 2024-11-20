@@ -51,6 +51,7 @@ struct bool_plugin_s {
   cnf_t cnf;
 
   /** The clause info */
+  // TODO change this to be stored in the solver, otherwise, we've got a race condition on plugin deletion
   mcsat_clause_info_t clause_info;
 
   /** Clauses that have been added and need to be processed */
@@ -185,6 +186,11 @@ static
 void bool_plugin_clause_info_delete(bool_plugin_t* bp) {
   mcsat_clause_info_t* info = &bp->clause_info;
   free_ptr_set(info->gc_subs);
+  info->info.get_clause = NULL;
+  info->info.get_clauses_by_literal = NULL;
+  info->info.get_clauses_by_var = NULL;
+  info->info.register_gc = NULL;
+  info->info.unregister_gc = NULL;
 }
 
 static
