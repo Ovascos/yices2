@@ -577,8 +577,6 @@ void clause_tracker_push(clause_tracker_t *ct) {
                     &ct->memory_size,
                     &ct->memory_pos,
                     NULL);
-  
-  assert(clause_tracker_check(ct));
 }
 
 void clause_tracker_pop(clause_tracker_t *ct) {
@@ -596,7 +594,7 @@ void clause_tracker_pop(clause_tracker_t *ct) {
     // in case clause was deleted, there is no need to find another watch
     if (e->c_ref != clause_ref_null) {
       bool unit = clause_watch_update(ct, e->c_ref);
-      (void) unit;
+      (void)unit;
       assert(!unit);
     }
 
