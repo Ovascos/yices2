@@ -215,11 +215,14 @@ void clause_tracker_list_push(clause_tracker_t *ct, clause_ref_t c_ref, variable
 // GC stuff
 
 void clause_tracker_gc_mark(mcsat_clause_info_gc_subscriber_t *sub, gc_info_t *gc_clauses, gc_info_t *gc_vars) {
-  // TODO make special mark, that can "suggest" clauses to be kept, but they're only kept by bool_plugin in case the level fits
-  // Just marking here results in unsound behavior
-
   clause_tracker_t *ct = (clause_tracker_t*)((void*)sub - offsetof(clause_tracker_t, gc_subscriber));
-  (void)ct;
+
+  // let's hope this is sound when solving incrementally
+  for (uint32_t i = 1; i < ct->memory_size; ++i) {
+    clause_tracker_list_element_t *elem = ct->memory + i;
+    assert(elem->c_ref != clause_ref_null);
+    gc_info_mark(gc_clauses, elem->c_ref);
+  }
 }
 
 void clause_tracker_gc_sweep(mcsat_clause_info_gc_subscriber_t *sub, const gc_info_t *gc_clauses, const gc_info_t *gc_vars) {
@@ -235,6 +238,7 @@ void clause_tracker_gc_sweep(mcsat_clause_info_gc_subscriber_t *sub, const gc_in
       elem->unit_variable = gc_info_get_reloc(gc_vars, elem->unit_variable);
     }
     elem->c_ref = gc_info_get_reloc(gc_clauses, elem->c_ref);
+    assert(elem->c_ref != clause_ref_null);
   }
 
   gc_info_sweep_int_hset(gc_clauses, &ct->clauses);
