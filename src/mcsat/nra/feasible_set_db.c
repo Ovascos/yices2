@@ -226,6 +226,7 @@ bool feasible_set_db_contains_reason(feasible_set_db_t* db, variable_t x, variab
 }
 
 /** Update the feasible set of the variable with a new set */
+// TODO create an option that takes an const lp_feasibility_set_t and copies on demand.
 bool
 feasible_set_db_update(feasible_set_db_t *db, variable_t x, lp_feasibility_set_t *new_set, const variable_t *cstr_list,
                        uint32_t cstr_count, int32_t aux_id) {
@@ -677,33 +678,51 @@ void feasible_set_db_approximate_value(feasible_set_db_t* db, variable_t constra
   }
 }
 
-void feasible_set_db_iterator_construct(feasible_set_db_iterator_t *it, const feasible_set_db_t *db) {
+void feasible_set_db_iterator_construct(feasible_set_db_iterator_t *it, const feasible_set_db_t *db, variable_t x) {
   it->db = db;
-  it->pos = int_hmap_first_record(&db->var_to_feasible_set_map);
+  it->pos = feasible_set_db_get_index(db, x);
 }
 
 void feasible_set_db_iterator_destruct(feasible_set_db_iterator_t *it) {
   // nothing to do
+  (void)it;
 }
 
 bool feasible_set_db_iterator_done(const feasible_set_db_iterator_t *it) {
-  return it->pos == NULL;
+  return it->pos == 0;
 }
 
 void feasible_set_db_iterator_next(feasible_set_db_iterator_t *it) {
-  assert(it->pos != NULL);
-  it->pos = int_hmap_next_record(&it->db->var_to_feasible_set_map, it->pos);
+  assert(it->pos != 0);
+  it->pos = it->db->memory[it->pos].prev;
 }
 
 const lp_feasibility_set_t* feasible_set_db_iterator_get_set(const feasible_set_db_iterator_t *it) {
-  assert(it->pos != NULL);
-  uint32_t index = it->pos->val;
-  assert(index > 0);
-  return it->db->memory[index].feasible_set;
+  assert(it->pos != 0);
+  return it->db->memory[it->pos].feasible_set;
 }
 
-/** Gets the current variable */
-variable_t feasible_set_db_iterator_get_variable(const feasible_set_db_iterator_t *it) {
-  assert(it->pos != NULL);
-  return it->pos->key;
+uint32_t feasible_set_db_iterator_get_reason_size(const feasible_set_db_iterator_t *it) {
+  assert(it->pos != 0);
+  return it->db->memory[it->pos].reasons_size;
+}
+
+variable_t feasible_set_db_iterator_get_reason(const feasible_set_db_iterator_t *it) {
+  assert(it->pos != 0);
+  feasibility_list_element_t *elem = it->db->memory + it->pos;
+  assert(elem->reasons_size == 1);
+  return elem->reason;
+}
+
+void feasible_set_db_iterator_get_reasons(const feasible_set_db_iterator_t *it, ivector_t *reasons) {
+  assert(it->pos != 0);
+  feasibility_list_element_t *elem = it->db->memory + it->pos;
+
+  if (elem->reasons_size == 1) {
+    ivector_push(reasons, elem->reason);
+  } else {
+    for (uint32_t i = 0; i < elem->reasons_size; ++i) {
+      ivector_push(reasons, elem->lemma_reasons[i]);
+    }
+  }
 }

@@ -91,13 +91,13 @@ typedef struct {
   /** The feasible set, the iterator is iterating on */
   const feasible_set_db_t* db;
 
-  /** The reference to the feasible set pair, null when done */
-  const int_hmap_pair_t* pos;
+  /** The index to the element, 0 when done */
+  uint32_t pos;
 
 } feasible_set_db_iterator_t;
 
 /** Constructs an iterator for the feasible set db */
-void feasible_set_db_iterator_construct(feasible_set_db_iterator_t *it, const feasible_set_db_t *db);
+void feasible_set_db_iterator_construct(feasible_set_db_iterator_t *it, const feasible_set_db_t *db, variable_t x);
 
 /** Destructs the iterator */
 void feasible_set_db_iterator_destruct(feasible_set_db_iterator_t *it);
@@ -111,5 +111,11 @@ void feasible_set_db_iterator_next(feasible_set_db_iterator_t *it);
 /** Gets the current feasible set */
 const lp_feasibility_set_t* feasible_set_db_iterator_get_set(const feasible_set_db_iterator_t *it);
 
-/** Gets the current variable */
-variable_t feasible_set_db_iterator_get_variable(const feasible_set_db_iterator_t *it);
+/** Gets the number of reasons of the current element */
+uint32_t feasible_set_db_iterator_get_reason_size(const feasible_set_db_iterator_t *it);
+
+/** Gets the current reason. Must be a single reason. */
+variable_t feasible_set_db_iterator_get_reason(const feasible_set_db_iterator_t *it);
+
+/** Adds all reasons of the current element to reasons */
+void feasible_set_db_iterator_get_reasons(const feasible_set_db_iterator_t *it, ivector_t *reasons);
