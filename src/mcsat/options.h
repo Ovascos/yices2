@@ -24,6 +24,14 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+typedef enum {
+  CLAUSE_LEVEL_DISABLED = 0,
+  CLAUSE_LEVEL_SINGLE,
+  CLAUSE_LEVEL_SINGLE_TRAIL,
+  CLAUSE_LEVEL_MULTIPLE,
+  CLAUSE_LEVEL_MULTIPLE_TRAIL,
+} clause_level_options_t;
+
 /**
  * Options for the mcsat solver.
  */
@@ -37,6 +45,7 @@ typedef struct mcsat_options_s {
   int32_t nra_bound_max;
   int32_t bv_var_size;
   bool model_interpolation;
+  clause_level_options_t clause_level_reasoning;
 } mcsat_options_t;
 
 /** Initialize options with default values. */

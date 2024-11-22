@@ -18,7 +18,7 @@
 
 #include "options.h"
 
-#include <stddef.h>
+#include <stdbool.h>
 
 extern void init_mcsat_options(mcsat_options_t *opts) {
   opts->rand_dec_freq = 0.02;
@@ -30,5 +30,5 @@ extern void init_mcsat_options(mcsat_options_t *opts) {
   opts->nra_bound_max = -1;
   opts->bv_var_size = -1;
   opts->model_interpolation = false;
+  opts->clause_level_reasoning = CLAUSE_LEVEL_DISABLED;
 }
-

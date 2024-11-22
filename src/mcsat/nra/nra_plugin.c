@@ -53,6 +53,9 @@
 
 #include "api/yices_api_lock_free.h"
 
+#define CL
+
+
 static inline
 bool nra_plugin_has_assignment(const nra_plugin_t* nra, variable_t x) {
   return trail_has_value(nra->ctx->trail, x) && trail_get_index(nra->ctx->trail, x) < nra->trail_i;
@@ -434,14 +437,19 @@ variable_t nra_plugin_clause_value_process_unit_clauses(nra_plugin_t* nra) {
       }
     }
 
-    // add the feasible set to the db
-    bool feasible = feasible_set_db_update(nra->clause_hint_feasible_set_db, x, clause_feasible,
-                                           reasons.data, reasons.size, ct_ref);
-    // TODO extend conflict detection to int variables
-    //if (!feasible || (variable_db_is_int(nra->ctx->var_db, x) && !lp_feasibility_set_contains_int(feasible_set_db_get(nra->clause_hint_feasible_set_db, x)))) {
-    if (!feasible) {
-      conflict_var = x;
-      break;
+    // a clause with a single c-unit constraint is left for the bool plugin to be propagated
+    if (reasons.size > 1) {
+      // add the feasible set to the db
+      bool feasible = feasible_set_db_update(nra->clause_hint_feasible_set_db, x, clause_feasible,
+                                             reasons.data, reasons.size, ct_ref);
+      // TODO extend conflict detection to int variables
+      //if (!feasible || (variable_db_is_int(nra->ctx->var_db, x) && !lp_feasibility_set_contains_int(feasible_set_db_get(nra->clause_hint_feasible_set_db, x)))) {
+      if (!feasible) {
+        conflict_var = x;
+        break;
+      }
+    } else {
+      lp_feasibility_set_delete(clause_feasible);
     }
 
     int_hset_add(&variables, x);
@@ -454,21 +462,21 @@ variable_t nra_plugin_clause_value_process_unit_clauses(nra_plugin_t* nra) {
 
   if (false && conflict_var == variable_null) {
     int_hset_close(&variables);
+    feasible_set_db_push(nra->clause_hint_feasible_set_db);
     // for each variable that was modified, check if there is a conflict together with the trail
     for (uint32_t i = 0; i < variables.nelems; ++i) {
       variable_t x = variables.data[i];
       const lp_feasibility_set_t *fs_trail = feasible_set_db_get(nra->feasible_set_db, x);
       if (fs_trail != NULL && !lp_feasibility_set_is_full(fs_trail)) {
-        feasible_set_db_push(nra->clause_hint_feasible_set_db);
         bool feasible = feasible_set_db_update(nra->clause_hint_feasible_set_db, x, lp_feasibility_set_new_copy(fs_trail),
                                                literals.data, literals.size, 0);
-        feasible_set_db_pop(nra->clause_hint_feasible_set_db);
         if (!feasible) {
           conflict_var = x;
           break;
         }
       }
     }
+    feasible_set_db_pop(nra->clause_hint_feasible_set_db);
   }
 
   delete_int_hset(&variables);
@@ -518,13 +526,21 @@ lp_feasibility_set_t* nra_plugin_get_feasible_set(nra_plugin_t* nra, variable_t 
 
 static
 void nra_plugin_get_clause_conflict(nra_plugin_t* nra, int_mset_t* pos, int_mset_t* neg, variable_t x, ivector_t* conflict) {
+  // TODO handle pos and neg conditions later
+  assert(pos->size == 0 && neg->size == 0);
 
-#ifndef CL
-  assert(false);
-#endif
+  clause_level_options_t opt = nra->ctx->options->clause_level_reasoning;
+  //assert(opt != CLAUSE_LEVEL_DISABLED);
 
-  // TODO statistic on number of clauses in the conflict
   clause_tracker_t *ct = nra->clause_hint_tracker;
+  bool incl_trail = (opt == CLAUSE_LEVEL_SINGLE_TRAIL || opt == CLAUSE_LEVEL_MULTIPLE_TRAIL);
+
+  assert(!incl_trail);
+  // TODO statistic on number of clauses in the conflict
+
+  // TODO try the following options
+  // (1) remove trail elements that are covered in the clauses
+  // (2) remove clauses that are covered by the trail
 
   if (ctx_trace_enabled(nra->ctx, "nra::clause-level")) {
     ctx_trace_printf(nra->ctx, "Found clause-level conflict in (%d) ", x);
@@ -532,33 +548,49 @@ void nra_plugin_get_clause_conflict(nra_plugin_t* nra, int_mset_t* pos, int_mset
     ctx_trace_printf(nra->ctx, "\n");
   }
 
-  // check if trail is included in the conflict
+  feasible_set_db_push(nra->clause_hint_feasible_set_db);
+
   const lp_feasibility_set_t *fs = feasible_set_db_get(nra->clause_hint_feasible_set_db, x);
   assert(fs);
-  bool incl_trail = !lp_feasibility_set_is_empty(fs);
 
-  assert(!incl_trail);
-  if (incl_trail) {
-    // TODO add trail feasible_set to clause_hint_feasible_set?
+  // do we need the trail to make it empty?
+  if (!lp_feasibility_set_is_empty(fs)) {
+    // add trail feasible_set to clause_hint_feasible_set
+    assert(incl_trail);
+    // add them individually to enable conflict core_clauses minimization later on
+    feasible_set_db_iterator_t it;
+    feasible_set_db_iterator_construct(&it, nra->feasible_set_db, x);
+    while (!feasible_set_db_iterator_done(&it)) {
+      assert(feasible_set_db_iterator_get_reason_size(&it) == 1);
+      variable_t reason = feasible_set_db_iterator_get_reason(&it);
+      lp_feasibility_set_t *set = lp_feasibility_set_new_copy(feasible_set_db_iterator_get_set(&it));
+      assert(reason > 0);
+      bool feasible = feasible_set_db_update(nra->clause_hint_feasible_set_db, x, set, &reason, 1, 0);
+      if (!feasible) break;
+    }
+    feasible_set_db_iterator_destruct(&it);
   }
 
+  assert(lp_feasibility_set_is_empty(feasible_set_db_get(nra->clause_hint_feasible_set_db, x)));
+
   // for each clause
-  ivector_t core, ct_refs;
-  init_ivector(&core, 0);
+  ivector_t core_trail, core_clauses, ct_refs;
+  init_ivector(&core_trail, 0);
+  init_ivector(&core_clauses, 0);
   init_ivector(&ct_refs, 0);
 
-  feasible_set_db_get_conflict_reasons(nra->clause_hint_feasible_set_db, x, NULL, &core, &core, &ct_refs);
+  feasible_set_db_get_conflict_reasons(nra->clause_hint_feasible_set_db, x,NULL, &core_trail, &core_clauses, &ct_refs);
 
-  // print number of ct_refs and actual refs of x in clause tracker
   if (ctx_trace_enabled(nra->ctx, "nra::clause-level")) {
     ivector_t tmp;
     init_ivector(&tmp, 0);
     clause_tracker_get_var_unit_clause(ct, x, &tmp);
     assert(ct_refs.size <= tmp.size);
+    // print number of ct_refs and actual refs of x in clause tracker
     ctx_trace_printf(nra->ctx, "Explaining clause-level conflict: (%d/%d): \n", ct_refs.size, tmp.size);
-    for (int i = 0; i < core.size; ++i) {
-      ctx_trace_printf(nra->ctx, "  (%d) ", core.data[i]);
-      variable_db_print_variable(nra->ctx->var_db, core.data[i], stderr);
+    for (int i = 0; i < core_clauses.size; ++i) {
+      ctx_trace_printf(nra->ctx, "  (%d) ", core_clauses.data[i]);
+      variable_db_print_variable(nra->ctx->var_db, core_clauses.data[i], stderr);
       ctx_trace_printf(nra->ctx, "\n");
     }
     delete_ivector(&tmp);
@@ -569,14 +601,29 @@ void nra_plugin_get_clause_conflict(nra_plugin_t* nra, int_mset_t* pos, int_mset
   for (uint32_t i = 0; i < ct_refs.size; ++i) {
     assert(clause_tracker_get_unit_variable(ct, ct_refs.data[i]) == x);
   }
-  // assert that the whole core is univariant in x
-  for (uint32_t i = 0; i < core.size; ++i) {
-    assert(constraint_unit_info_get_unit_var(&nra->unit_info, core.data[i]) == x);
+  // assert that the whole core_clauses is univariant in x
+  for (uint32_t i = 0; i < core_clauses.size; ++i) {
+    assert(constraint_unit_info_get_unit_var(&nra->unit_info, core_clauses.data[i]) == x);
+  }
+  // assert that the whole core_trail is univariant in x
+  for (uint32_t i = 0; i < core_trail.size; ++i) {
+    assert(constraint_unit_info_get_unit_var(&nra->unit_info, core_trail.data[i]) == x);
   }
 #endif
 
-  // explain the core
-  nra_plugin_project(nra, &core, conflict);
+  // explain the core_clauses
+  nra_plugin_project(nra, &core_clauses, conflict);
+
+  // collect the trail
+  assert(incl_trail || core_trail.size == 0);
+  for (uint32_t i = 0; i < core_trail.size; ++i) {
+    variable_t constraint = core_trail.data[i];
+    // if it's part of a clause, its over-approximation is already in the fs
+    assert(!ivector_contains(&core_clauses, constraint));
+    term_t constraint_term = variable_db_get_term(nra->ctx->var_db, constraint);
+    bool constraint_value = trail_get_boolean_value(nra->ctx->trail, constraint);
+    ivector_push(conflict, !constraint_value ? opposite_term(constraint_term) : constraint_term);
+  }
 
   // collect side-conditions
   ivector_t side_cond;
@@ -586,8 +633,12 @@ void nra_plugin_get_clause_conflict(nra_plugin_t* nra, int_mset_t* pos, int_mset
     for (uint32_t j = 0; j < side_cond.size; ++j) {
       mcsat_literal_t l = side_cond.data[j];
       variable_t v = literal_get_variable(l);
-      // if it's in the core, it's not a side condition
-      if (ivector_contains(&core, v)) {
+      // if it's in the core_clauses, it's not a side condition
+      if (ivector_contains(&core_clauses, v)) {
+        continue;
+      }
+      // don't add it twice
+      if (ivector_contains(&core_trail, v)) {
         continue;
       }
       // otherwise, it must be on the trail and evaluate to false
@@ -598,8 +649,11 @@ void nra_plugin_get_clause_conflict(nra_plugin_t* nra, int_mset_t* pos, int_mset
     ivector_reset(&side_cond);
   }
   delete_ivector(&side_cond);
-  delete_ivector(&core);
+  delete_ivector(&core_trail);
+  delete_ivector(&core_clauses);
   delete_ivector(&ct_refs);
+
+  feasible_set_db_pop(nra->clause_hint_feasible_set_db);
 
   if (ctx_trace_enabled(nra->ctx, "nra::clause-level")) {
     ctx_trace_printf(nra->ctx, "Explanation: ");
