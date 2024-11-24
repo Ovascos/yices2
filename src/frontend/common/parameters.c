@@ -25,6 +25,7 @@
 #include <assert.h>
 
 #include "frontend/common/parameters.h"
+#include "frontend/common/string_options.h"
 #include "utils/string_utils.h"
 
 /*
@@ -178,71 +179,6 @@ static const yices_param_t param_code[NUM_PARAMETERS] = {
   PARAM_TCLAUSE_SIZE,
   PARAM_VAR_DECAY,
   PARAM_VAR_ELIM,
-};
-
-
-
-/*
- * Names of each branching mode (in lexicographic order)
- */
-#define NUM_BRANCHING_MODES 6
-
-static const char * const branching_modes[NUM_BRANCHING_MODES] = {
-  "default",
-  "negative",
-  "positive",
-  "th-neg",
-  "th-pos",
-  "theory",
-};
-
-static const branch_t branching_code[NUM_BRANCHING_MODES] = {
-  BRANCHING_DEFAULT,
-  BRANCHING_NEGATIVE,
-  BRANCHING_POSITIVE,
-  BRANCHING_TH_NEG,
-  BRANCHING_TH_POS,
-  BRANCHING_THEORY,
-};
-
-
-
-/*
- * Names of the generalization modes for the EF solver
- */
-#define NUM_EF_GEN_MODES 4
-
-static const char * const ef_gen_modes[NUM_EF_GEN_MODES] = {
-  "auto",
-  "none",
-  "projection",
-  "substitution",
-};
-
-static const ef_gen_option_t ef_gen_code[NUM_EF_GEN_MODES] = {
-  EF_GEN_AUTO_OPTION,
-  EF_NOGEN_OPTION,
-  EF_GEN_BY_PROJ_OPTION,
-  EF_GEN_BY_SUBST_OPTION,
-};
-
-
-
-/*
- * Names of the ematch modes for the quant solver
- */
-#define NUM_EMATCH_MODES 3
-
-static const char * const ematch_modes[NUM_EMATCH_MODES] = {
-  "all",
-  "epsilongreedy",
-  "random",
-};
-
-static const iterate_kind_t ematch_mode_code[NUM_EMATCH_MODES] = {
-  ITERATE_ALL,
-  ITERATE_EPSILONGREEDY,
-  ITERATE_RANDOM,
 };
 
 

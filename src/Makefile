@@ -211,7 +211,6 @@ core_src_c := \
 	solvers/simplex/matrices.c \
 	solvers/simplex/offset_equalities.c \
 	solvers/simplex/simplex.c \
-	solvers/quant/quant_parameters.c \
 	solvers/quant/ef_parameters.c \
 	solvers/quant/ef_problem.c \
 	solvers/quant/quant_pattern.c \
@@ -425,6 +424,7 @@ extra_src_c := \
 	frontend/common/bug_report.c \
 	frontend/common/named_term_stacks.c \
 	frontend/common/parameters.c \
+	frontend/common/string_options.c \
 	frontend/common/tables.c \
 	frontend/smt1/smt_lexer.c \
 	frontend/smt1/smt_parser.c \

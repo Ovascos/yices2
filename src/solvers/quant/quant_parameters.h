@@ -102,15 +102,4 @@ typedef enum {
 #define TERM_RL_DEPTH_COST_FACTOR               0.8
 
 
-/*
- * Test whether ematch mode is known and supported.
- * - mode = ematch iteration mode to use
- * - return mode (as positive integer) if this mode is supported.
- * - return -1 otherwise.
- */
-extern int32_t supported_ematch_mode(const char *mode);
-
-
-
-
 #endif /* __QUANT_PARAMETERS_H */

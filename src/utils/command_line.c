@@ -757,3 +757,38 @@ bool validate_double_option(cmdline_parser_t *p, cmdline_elem_t *e, double min, 
 
   return false;
 }
+
+/*
+ * Validate a string option
+ * - e = command-line option being processed
+ * - options = sorted array of valid options
+ * - values = array of corresponding values to be set in e
+ * - n = number of entries in options and values
+ *
+ * Return true the checks pass.
+ * Otherwise, print an error message and return false.
+ */
+bool validate_string_option(cmdline_parser_t *p, cmdline_elem_t *e, const char *const *options, const int32_t *values, int32_t n) {
+  int32_t i;
+
+  i = binary_search_string(e->s_value, options, n);
+  if (i >= 0) {
+    assert(i < n);
+    e->i_value = values[i];
+    return true;
+  }
+
+  // incorrect value
+  if (p->command_name != NULL) {
+    fprintf(stderr, "%s: ", p->command_name);
+  }
+  print_option_name(stderr, e);
+  fprintf(stderr, " must be one of ");
+  for (uint32_t j = 0; j < n; ++j) {
+    if (j) fprintf(stderr, ", ");
+    fprintf(stderr, "'%s'", options[j]);
+  }
+  fprintf(stderr, ".\n");
+
+  return false;
+}

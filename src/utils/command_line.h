@@ -221,4 +221,16 @@ extern bool validate_integer_option(cmdline_parser_t *p, cmdline_elem_t *e, int3
 extern bool validate_double_option(cmdline_parser_t *p, cmdline_elem_t *e, double min, bool min_strict, double max, bool max_strict);
 
 
+/*
+ * Validate a string option
+ * - e = command-line option being processed
+ * - options = sorted array of valid options
+ * - values = array of corresponding values to be set in e
+ * - n = number of entries in options and values
+ *
+ * Return true the checks pass.
+ * Otherwise, print an error message and return false.
+ */
+extern bool validate_string_option(cmdline_parser_t *p, cmdline_elem_t *e, const char *const *options, const int32_t *values, int32_t n);
+
 #endif /* __COMMAND_LINE_H */

@@ -60,6 +60,7 @@
 #endif
 
 #include "frontend/common/parameters.h"
+#include "frontend/common/string_options.h"
 #include "frontend/smt2/smt2_commands.h"
 #include "frontend/smt2/smt2_lexer.h"
 #include "frontend/smt2/smt2_parser.h"
@@ -685,19 +686,13 @@ static void parse_command_line(int argc, char *argv[]) {
         break;
 
       case ematch_cnstr_mode_opt:
-        ef_ematch_cnstr_mode = supported_ematch_mode(elem.s_value);
-        if (ef_ematch_cnstr_mode < 0) {
-          fprintf(stderr, "%s: unsupported ematching constraint mode: %s\n", parser.command_name, elem.s_value);
-          goto bad_usage;
-        }
+        if (! validate_string_option(&parser, &elem, ematch_modes, (const int32_t*)ematch_mode_code, NUM_EMATCH_MODES)) goto bad_usage;
+        ef_ematch_cnstr_mode = elem.i_value;
         break;
 
       case ematch_term_mode_opt:
-        ef_ematch_term_mode = supported_ematch_mode(elem.s_value);
-        if (ef_ematch_term_mode < 0) {
-          fprintf(stderr, "%s: unsupported ematching term mode: %s\n", parser.command_name, elem.s_value);
-          goto bad_usage;
-        }
+        if (! validate_string_option(&parser, &elem, ematch_modes, (const int32_t*)ematch_mode_code, NUM_EMATCH_MODES)) goto bad_usage;
+        ef_ematch_term_mode = elem.i_value;
         break;
 
       case trace_opt:
