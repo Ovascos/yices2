@@ -69,6 +69,7 @@
 #include "solvers/cdcl/delegate.h"
 #include "utils/command_line.h"
 #include "solvers/quant/quant_parameters.h"
+#include "mcsat/options.h"
 
 #include "yices.h"
 #include "yices_exit_codes.h"
@@ -117,6 +118,7 @@ static bool mcsat_nra_bound;
 static int32_t mcsat_nra_bound_min;
 static int32_t mcsat_nra_bound_max;
 static int32_t mcsat_bv_var_size;
+static clause_level_options_t mcsat_clause_level_mode;
 
 static pvector_t trace_tags;
 
@@ -173,6 +175,7 @@ typedef enum optid {
   mcsat_nra_bound_min_opt, // set initial bound
   mcsat_nra_bound_max_opt, // set maximal bound
   mcsat_bv_var_size_opt,   // set size of bitvector variables
+  mcsat_clause_level_mode_opt, // sets the clause-level-reasoning mode
   trace_opt,               // enable a trace tag
   show_ef_help_opt,        // print help about the ef options
   ematch_en_opt,                    // enable ematching
@@ -224,6 +227,7 @@ static option_desc_t options[NUM_OPTIONS] = {
   { "mcsat-nra-bound-min", '\0', MANDATORY_INT, mcsat_nra_bound_min_opt },
   { "mcsat-nra-bound-max", '\0', MANDATORY_INT, mcsat_nra_bound_max_opt },
   { "mcsat-bv-var-size", '\0', MANDATORY_INT, mcsat_bv_var_size_opt },
+  { "mcsat-clause-level-mode", '\0', MANDATORY_STRING, mcsat_clause_level_mode_opt },
   { "trace", 't', MANDATORY_STRING, trace_opt },
   { "ef-help", '0', FLAG_OPTION, show_ef_help_opt },
   { "ematch", '\0', FLAG_OPTION, ematch_en_opt },
@@ -405,6 +409,7 @@ static void parse_command_line(int argc, char *argv[]) {
   mcsat_nra_bound_min = -1;
   mcsat_nra_bound_max = -1;
   mcsat_bv_var_size = -1;
+  mcsat_clause_level_mode = CLAUSE_LEVEL_DISABLED;
 
   init_pvector(&trace_tags, 5);
 
@@ -599,6 +604,12 @@ static void parse_command_line(int argc, char *argv[]) {
         if (! yices_has_mcsat()) goto no_mcsat;
         if (! validate_integer_option(&parser, &elem, 0, INT32_MAX)) goto bad_usage;
         mcsat_bv_var_size = elem.i_value;
+        break;
+
+      case mcsat_clause_level_mode_opt:
+        if (! yices_has_mcsat()) goto no_mcsat;
+        if (! validate_string_option(&parser, &elem, mcsat_clause_level_modes, (const int32_t*)mcsat_clause_level_mode_code, NUM_MCSAT_CLAUSE_LEVEL_MODES)) goto bad_usage;
+        mcsat_clause_level_mode = elem.i_value;
         break;
 
       case show_ef_help_opt:
@@ -827,6 +838,11 @@ static void setup_options_mcsat(void) {
     aval_bv_var_size = attr_vtbl_rational(__smt2_globals.avtbl, &q);
     smt2_set_option(":yices-mcsat-bv-var-size", aval_bv_var_size);
     q_clear(&q);
+  }
+
+  if (mcsat_clause_level_mode != CLAUSE_LEVEL_DISABLED) {
+    aval_t aval_mode = attr_vtbl_symbol(__smt2_globals.avtbl, mcsatclauselevelmode2string[mcsat_clause_level_mode]);
+    smt2_set_option(":yices-mcsat-clause-level-mode", aval_mode);
   }
 }
 

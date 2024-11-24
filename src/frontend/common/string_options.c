@@ -81,3 +81,25 @@ const iterate_kind_t ematch_mode_code[NUM_EMATCH_MODES] = {
     ITERATE_EPSILONGREEDY,
     ITERATE_RANDOM,
 };
+
+
+
+/*
+ * Names of the clause level reasoning modes for the mcsat solver
+ */
+
+const char * const mcsat_clause_level_modes[NUM_MCSAT_CLAUSE_LEVEL_MODES] = {
+    "disabled",
+    "many",
+    "many-trail",
+    "single",
+    "single-trail",
+};
+
+const clause_level_options_t mcsat_clause_level_mode_code[NUM_MCSAT_CLAUSE_LEVEL_MODES] = {
+    CLAUSE_LEVEL_DISABLED,
+    CLAUSE_LEVEL_MULTIPLE,
+    CLAUSE_LEVEL_MULTIPLE_TRAIL,
+    CLAUSE_LEVEL_SINGLE,
+    CLAUSE_LEVEL_SINGLE_TRAIL,
+};

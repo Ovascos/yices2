@@ -5382,6 +5382,10 @@ static bool yices_get_option(smt2_globals_t *g, yices_param_t p) {
     print_terms_value(g, &g->var_order);
     break;
 
+  case PARAM_MCSAT_CLAUSE_LEVEL:
+    print_string_value(mcsatclauselevelmode2string[g->mcsat_options.clause_level_reasoning]);
+    break;
+
   case PARAM_UNKNOWN:
   default:
     freport_bug(g->err,"invalid parameter id in 'yices_get_option'");
@@ -6187,6 +6191,16 @@ static void yices_set_option(smt2_globals_t *g, const char *param, const param_v
       context = g->ctx;
       if (context != NULL) {
         ivector_copy(&context->mcsat_var_order, terms->data, terms->size);
+      }
+    }
+    break;
+
+  case PARAM_MCSAT_CLAUSE_LEVEL:
+    if (param_val_to_clause_level_option(param, val, (clause_level_options_t *)&n, &reason)) {
+      g->mcsat_options.clause_level_reasoning = n;
+      context = g->ctx;
+      if (context != NULL) {
+        context->mcsat_options.clause_level_reasoning = n;
       }
     }
     break;

@@ -84,6 +84,7 @@ static const char * const param_names[NUM_PARAMETERS] = {
   "max-interface-eqs",
   "max-update-conflicts",
   "mcsat-bv-var-size",
+  "mcsat-clause-level-mode",
   "mcsat-nra-bound",
   "mcsat-nra-bound-max",
   "mcsat-nra-bound-min",
@@ -159,6 +160,7 @@ static const yices_param_t param_code[NUM_PARAMETERS] = {
   PARAM_MAX_INTERFACE_EQS,
   PARAM_MAX_UPDATE_CONFLICTS,
   PARAM_MCSAT_BV_VAR_SIZE,
+  PARAM_MCSAT_CLAUSE_LEVEL,
   PARAM_MCSAT_NRA_BOUND,
   PARAM_MCSAT_NRA_BOUND_MAX,
   PARAM_MCSAT_NRA_BOUND_MIN,
@@ -191,12 +193,14 @@ const char *param2string[NUM_PARAMETERS];
 const char *branching2string[NUM_BRANCHING_MODES];
 const char *efgen2string[NUM_EF_GEN_MODES];
 const char *ematchmode2string[NUM_EMATCH_MODES];
+const char *mcsatclauselevelmode2string[NUM_MCSAT_CLAUSE_LEVEL_MODES];
 
 
 /*
  * Initialize the table [parameter id --> string]
  * and [branching mode --> string]
  * and [ef gen code --> string]
+ * and [mcsat branch level mode --> string]
  */
 void init_parameter_name_table(void) {
   uint32_t i, j;
@@ -224,6 +228,12 @@ void init_parameter_name_table(void) {
     name = ematch_modes[i];
     j = ematch_mode_code[i];
     ematchmode2string[j] = name;
+  }
+
+  for (i=0; i<NUM_MCSAT_CLAUSE_LEVEL_MODES; i++) {
+    name = mcsat_clause_level_modes[i];
+    j = mcsat_clause_level_mode_code[i];
+    mcsatclauselevelmode2string[j] = name;
   }
 }
 
@@ -429,3 +439,26 @@ bool param_val_to_ematchmode(const char *name, const param_val_t *v, iterate_kin
 
   return false;
 }
+
+/*
+ * MCSAT clause level mode
+ * - allowed modes are 'disabled' 'single' 'single-trail' 'many' 'many-trail'
+ * - we use a general implementation so that we can add more modes later
+ */
+bool param_val_to_clause_level_option(const char *name, const param_val_t *v, clause_level_options_t *value, char **reason) {
+  int32_t i;
+
+  if (v->tag == PARAM_VAL_SYMBOL) {
+    i = binary_search_string(v->val.symbol, mcsat_clause_level_modes, NUM_MCSAT_CLAUSE_LEVEL_MODES);
+    if (i >= 0) {
+      assert(i < NUM_MCSAT_CLAUSE_LEVEL_MODES);
+      *value = mcsat_clause_level_mode_code[i];
+      return true;
+    }
+  }
+  *reason = "must be one of 'disabled' 'single' 'single-trail' 'many' 'many-trail'";
+
+  return false;
+}
+
+

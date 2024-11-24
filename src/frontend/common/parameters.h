@@ -30,6 +30,7 @@
 #include "utils/int_vectors.h"
 #include "api/search_parameters.h"
 #include "terms/rationals.h"
+#include "mcsat/options.h"
 
 /*
  * Search parameters and internalization options can be set individually
@@ -124,6 +125,7 @@ typedef enum yices_param {
   PARAM_MCSAT_NRA_BOUND_MAX,
   PARAM_MCSAT_BV_VAR_SIZE,
   PARAM_MCSAT_VAR_ORDER,
+  PARAM_MCSAT_CLAUSE_LEVEL,
   // error
   PARAM_UNKNOWN
 } yices_param_t;
@@ -168,6 +170,7 @@ extern const char *param2string[];
 extern const char *branching2string[];
 extern const char *efgen2string[];
 extern const char *ematchmode2string[];
+extern const char *mcsatclauselevelmode2string[];
 
 
 /*
@@ -222,5 +225,11 @@ extern bool param_val_to_genmode(const char *name, const param_val_t *v, ef_gen_
  */
 extern bool param_val_to_ematchmode(const char *name, const param_val_t *v, iterate_kind_t *value, char **reason);
 
+/*
+ * MCSAT clause level mode
+ * - allowed modes are 'disabled' 'single' 'single-trail' 'many' 'many-trail'
+ * - we use a general implementation so that we can add more modes later
+ */
+extern bool param_val_to_clause_level_option(const char *name, const param_val_t *v, clause_level_options_t *value, char **reason);
 
 #endif /* __FRONTEND_COMMON_PARAMETERS_H */

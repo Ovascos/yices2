@@ -26,6 +26,7 @@
 
 #include "solvers/quant/ef_parameters.h"
 #include "api/search_parameters.h"
+#include "mcsat/options.h"
 
 /*
  * Names of each branching mode (in lexicographic order)
@@ -47,5 +48,12 @@ extern const ef_gen_option_t ef_gen_code[NUM_EF_GEN_MODES];
 #define NUM_EMATCH_MODES 3
 extern const char * const ematch_modes[NUM_EMATCH_MODES];
 extern const iterate_kind_t ematch_mode_code[NUM_EMATCH_MODES];
+
+/*
+ * Names of the clause level reasoning modes for the mcsat solver
+ */
+#define NUM_MCSAT_CLAUSE_LEVEL_MODES 5
+extern const char * const mcsat_clause_level_modes[NUM_MCSAT_CLAUSE_LEVEL_MODES];
+extern const clause_level_options_t mcsat_clause_level_mode_code[NUM_MCSAT_CLAUSE_LEVEL_MODES];
 
 #endif /* __FRONTEND_COMMON_STRING_OPTIONS_H */
