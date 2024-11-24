@@ -5375,7 +5375,7 @@ static bool yices_get_option(smt2_globals_t *g, yices_param_t p) {
     break;
 
   case PARAM_MCSAT_RAND_DEC_SEED:
-    print_int32_value(g->mcsat_options.rand_dec_seed);
+    print_float_value(g->mcsat_options.rand_dec_seed);
     break;
 
   case PARAM_MCSAT_VAR_ORDER:
@@ -5657,7 +5657,6 @@ static void yices_set_option(smt2_globals_t *g, const char *param, const param_v
   int32_t n;
   double x;
   branch_t b;
-  ef_gen_option_t gen;
   ivector_t* terms;
   char* reason;
   context_t *context;
@@ -5984,8 +5983,8 @@ static void yices_set_option(smt2_globals_t *g, const char *param, const param_v
     break;
 
   case PARAM_EF_GEN_MODE:
-    if (param_val_to_genmode(param, val, &gen, &reason)) {
-      g->ef_client.ef_parameters.gen_mode = gen;
+    if (param_val_to_genmode(param, val, (ef_gen_option_t *)&n, &reason)) {
+      g->ef_client.ef_parameters.gen_mode = n;
     }
     break;
 

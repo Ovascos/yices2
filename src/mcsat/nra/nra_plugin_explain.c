@@ -1271,10 +1271,7 @@ void nra_plugin_explain_conflict(nra_plugin_t* nra, const int_mset_t* pos, const
     term_t constraint_term = variable_db_get_term(nra->ctx->var_db, constraint_var);
     assert(constraint_has_value(nra->ctx->trail, pos, neg, constraint_var));
     bool constraint_value = constraint_get_value(nra->ctx->trail, pos, neg, constraint_var);
-    if (!constraint_value) {
-      constraint_term = opposite_term(constraint_term);
-    }
-    ivector_push(conflict, constraint_term);
+    ivector_push(conflict, !constraint_value ? opposite_term(constraint_term) : constraint_term);
   }
 
   // Remove the projection map

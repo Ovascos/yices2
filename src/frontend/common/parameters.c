@@ -447,12 +447,10 @@ bool param_val_to_branching(const char *name, const param_val_t *v, branch_t *va
       return true;
     }
   }
-  *reason = "must be one of 'default' 'positive' 'negative' 'theory' 'th-neg' 'th-pos";
+  *reason = "must be one of 'default' 'positive' 'negative' 'theory' 'th-neg' 'th-pos'";
 
   return false;
 }
-
-
 
 /*
  * EF generalization mode
@@ -474,7 +472,6 @@ bool param_val_to_genmode(const char *name, const param_val_t *v, ef_gen_option_
 
   return false;
 }
-
 
 /*
  * EMATCH mode

@@ -488,8 +488,8 @@ static void process_command_line(int argc, char *argv[]) {
         break;
 
       case mcsat_flag:
-	mcsat_requested = true;
-	break;
+        mcsat_requested = true;
+        break;
 
       case version_flag:
         print_version(stdout);
@@ -500,19 +500,19 @@ static void process_command_line(int argc, char *argv[]) {
         goto quick_exit;
 
       case print_success_flag:
-	print_success = true;
-	break;
+        print_success = true;
+        break;
 
       case abort_on_int_flag:
         abort_on_int = true;
         break;
 
       case verbosity_option:
-	v = elem.i_value;
-	if (v < 0) {
-	  fprintf(stderr, "%s: the verbosity level must be non-negative\n", parser.command_name);
-	  goto bad_usage;
-	}
+        v = elem.i_value;
+        if (v < 0) {
+          fprintf(stderr, "%s: the verbosity level must be non-negative\n", parser.command_name);
+          goto bad_usage;
+        }
         verbosity = v;
         break;
 
@@ -557,8 +557,8 @@ static void process_command_line(int argc, char *argv[]) {
     }
     if (logic_code == SMT_UNKNOWN) {
       if (arith_code == ARITH_FLOYD_WARSHALL) {
-	fprintf(stderr, "%s: please specify the logic (either QF_IDL or QF_RDL)\n", parser.command_name);
-	goto bad_usage;
+        fprintf(stderr, "%s: please specify the logic (either QF_IDL or QF_RDL)\n", parser.command_name);
+        goto bad_usage;
       }
       // use default settings
       arch = CTX_ARCH_EGFUNSPLXBV;
@@ -567,8 +567,8 @@ static void process_command_line(int argc, char *argv[]) {
     } else {
       arch_code = ef_arch_for_logic(logic_code);
       if (arch_code < 0) {
-	fprintf(stderr, "%s: logic %s is not supported in ef-mode\n", parser.command_name, logic_name);
-	exit(YICES_EXIT_ERROR);
+        fprintf(stderr, "%s: logic %s is not supported in ef-mode\n", parser.command_name, logic_name);
+        exit(YICES_EXIT_ERROR);
       }
       assert(logic_is_supported_by_ef(logic_code));
       logic_code = qf_fragment(logic_code);
@@ -587,8 +587,8 @@ static void process_command_line(int argc, char *argv[]) {
 
     default:
       if (! logic_is_supported_by_mcsat(logic_code)) {
-	fprintf(stderr, "%s: logic %s is not supported by the mc-sat solver\n", parser.command_name, logic_name);
-	exit(YICES_EXIT_ERROR);
+        fprintf(stderr, "%s: logic %s is not supported by the mc-sat solver\n", parser.command_name, logic_name);
+        exit(YICES_EXIT_ERROR);
       }
     }
 
@@ -603,8 +603,8 @@ static void process_command_line(int argc, char *argv[]) {
     switch (logic_code) {
     case SMT_UNKNOWN:
       if (arith_code == ARITH_FLOYD_WARSHALL) {
-	fprintf(stderr, "%s: please specify the logic (either QF_IDL or QF_RDL)\n", parser.command_name);
-	goto bad_usage;
+        fprintf(stderr, "%s: please specify the logic (either QF_IDL or QF_RDL)\n", parser.command_name);
+        goto bad_usage;
       }
       // use default settings
       arch = CTX_ARCH_EGFUNSPLXBV;
@@ -614,11 +614,11 @@ static void process_command_line(int argc, char *argv[]) {
 
     case QF_IDL:
       if (arith_code == ARITH_SIMPLEX) {
-	arch = CTX_ARCH_SPLX;
+        arch = CTX_ARCH_SPLX;
       } else if (arith_code == ARITH_FLOYD_WARSHALL) {
-	arch = CTX_ARCH_IFW;
+        arch = CTX_ARCH_IFW;
       } else {
-	arch = CTX_ARCH_AUTO_IDL;
+        arch = CTX_ARCH_AUTO_IDL;
       }
       iflag = false; // not relevant in IDL
       qflag = false;
@@ -626,11 +626,11 @@ static void process_command_line(int argc, char *argv[]) {
 
     case QF_RDL:
       if (arith_code == ARITH_SIMPLEX) {
-	arch = CTX_ARCH_SPLX;
+        arch = CTX_ARCH_SPLX;
       } else if (arith_code == ARITH_FLOYD_WARSHALL) {
-	arch = CTX_ARCH_RFW;
+        arch = CTX_ARCH_RFW;
       } else {
-	arch = CTX_ARCH_AUTO_RDL;
+        arch = CTX_ARCH_AUTO_RDL;
       }
       iflag = false;
       qflag = false;
@@ -640,12 +640,12 @@ static void process_command_line(int argc, char *argv[]) {
       assert(logic_name != NULL && 0 <= logic_code && logic_code < NUM_SMT_LOGICS);
       arch_code = arch_for_logic(logic_code);
       if (arch_code < 0) {
-	if (logic_is_supported_by_ef(logic_code)) {
-	  fprintf(stderr, "%s: logic %s is supported only in ef-mode\n", parser.command_name, logic_name);
-	} else {
-	  fprintf(stderr, "%s: logic %s is not supported\n", parser.command_name, logic_name);
-	}
-	exit(YICES_EXIT_ERROR);
+        if (logic_is_supported_by_ef(logic_code)) {
+          fprintf(stderr, "%s: logic %s is supported only in ef-mode\n", parser.command_name, logic_name);
+        } else {
+          fprintf(stderr, "%s: logic %s is not supported\n", parser.command_name, logic_name);
+        }
+        exit(YICES_EXIT_ERROR);
       }
       arch = (context_arch_t) arch_code;
       iflag = iflag_for_logic(logic_code);
@@ -653,9 +653,9 @@ static void process_command_line(int argc, char *argv[]) {
 
       // fail here: if we need MCSAT, but it's not available
       if (arch == CTX_ARCH_MCSAT && !yices_has_mcsat()) {
-	fprintf(stderr, "%s: logic %s is not supported; %s was not compiled with mcsat support\n",
-		parser.command_name, logic_name, parser.command_name);
-	exit(YICES_EXIT_ERROR);
+        fprintf(stderr, "%s: logic %s is not supported; %s was not compiled with mcsat support\n",
+                parser.command_name, logic_name, parser.command_name);
+        exit(YICES_EXIT_ERROR);
       }
       break;
     }
@@ -675,10 +675,10 @@ static void process_command_line(int argc, char *argv[]) {
       // no filename as input: we use interactive mode
       // unless the logic requires MCSAT
       if (arch == CTX_ARCH_MCSAT) {
-	// MCSAT does not support interactive mode
-	mode = CTX_MODE_PUSHPOP;
+        // MCSAT does not support interactive mode
+        mode = CTX_MODE_PUSHPOP;
       } else {
-	mode = CTX_MODE_INTERACTIVE; // no input given: interactive mode
+        mode = CTX_MODE_INTERACTIVE; // no input given: interactive mode
       }
     }
   } else if (mode_code == EFSOLVER_MODE) {
@@ -1555,11 +1555,11 @@ static void yices_setparam_cmd(const char *param, const param_val_t *val) {
     if (param_val_to_bool(param, val, &tt, &reason)) {
       ctx_parameters.var_elim = tt;
       if (context != NULL) {
-	if (tt) {
-	  enable_variable_elimination(context);
-	} else {
-	  disable_variable_elimination(context);
-	}
+        if (tt) {
+          enable_variable_elimination(context);
+        } else {
+          disable_variable_elimination(context);
+        }
       }
       print_ok();
     }
@@ -1569,11 +1569,11 @@ static void yices_setparam_cmd(const char *param, const param_val_t *val) {
     if (param_val_to_bool(param, val, &tt, &reason)) {
       ctx_parameters.arith_elim = tt;
       if (context != NULL) {
-	if (tt) {
-	  enable_arith_elimination(context);
-	} else {
-	  disable_arith_elimination(context);
-	}
+        if (tt) {
+          enable_arith_elimination(context);
+        } else {
+          disable_arith_elimination(context);
+        }
       }
       print_ok();
     }
@@ -1583,11 +1583,11 @@ static void yices_setparam_cmd(const char *param, const param_val_t *val) {
     if (param_val_to_bool(param, val, &tt, &reason)) {
       ctx_parameters.bvarith_elim = tt;
       if (context != NULL) {
-	if (tt) {
-	  enable_bvarith_elimination(context);
-	} else {
-	  disable_bvarith_elimination(context);
-	}
+        if (tt) {
+          enable_bvarith_elimination(context);
+        } else {
+          disable_bvarith_elimination(context);
+        }
       }
       print_ok();
     }
@@ -1597,11 +1597,11 @@ static void yices_setparam_cmd(const char *param, const param_val_t *val) {
     if (param_val_to_bool(param, val, &tt, &reason)) {
       ctx_parameters.flatten_or = tt;
       if (context != NULL) {
-	if (tt) {
-	  enable_diseq_and_or_flattening(context);
-	} else {
-	  disable_diseq_and_or_flattening(context);
-	}
+        if (tt) {
+          enable_diseq_and_or_flattening(context);
+        } else {
+          disable_diseq_and_or_flattening(context);
+        }
       }
       print_ok();
     }
@@ -1611,11 +1611,11 @@ static void yices_setparam_cmd(const char *param, const param_val_t *val) {
     if (param_val_to_bool(param, val, &tt, &reason)) {
       ctx_parameters.eq_abstraction = tt;
       if (context != NULL) {
-	if (tt) {
-	  enable_eq_abstraction(context);
-	} else {
-	  disable_eq_abstraction(context);
-	}
+        if (tt) {
+          enable_eq_abstraction(context);
+        } else {
+          disable_eq_abstraction(context);
+        }
       }
       print_ok();
     }
@@ -1625,11 +1625,11 @@ static void yices_setparam_cmd(const char *param, const param_val_t *val) {
     if (param_val_to_bool(param, val, &tt, &reason)) {
       ctx_parameters.keep_ite = tt;
       if (context != NULL) {
-	if (tt) {
-	  enable_keep_ite(context);
-	} else {
-	  disable_keep_ite(context);
-	}
+        if (tt) {
+          enable_keep_ite(context);
+        } else {
+          disable_keep_ite(context);
+        }
       }
       print_ok();
     }
@@ -1814,11 +1814,11 @@ static void yices_setparam_cmd(const char *param, const param_val_t *val) {
     if (param_val_to_bool(param, val, &tt, &reason)) {
       ctx_parameters.splx_eager_lemmas = tt;
       if (context != NULL) {
-	if (tt) {
-	  enable_splx_eager_lemmas(context);
-	} else {
-	  disable_splx_eager_lemmas(context);
-	}
+        if (tt) {
+          enable_splx_eager_lemmas(context);
+        } else {
+          disable_splx_eager_lemmas(context);
+        }
       }
       print_ok();
     }
@@ -1856,11 +1856,11 @@ static void yices_setparam_cmd(const char *param, const param_val_t *val) {
     if (param_val_to_bool(param, val, &tt, &reason)) {
       ctx_parameters.splx_periodic_icheck = tt;
       if (context != NULL) {
-	if (tt) {
-	  enable_splx_periodic_icheck(context);
-	} else {
-	  disable_splx_periodic_icheck(context);
-	}
+        if (tt) {
+          enable_splx_periodic_icheck(context);
+        } else {
+          disable_splx_periodic_icheck(context);
+        }
       }
       print_ok();
     }
