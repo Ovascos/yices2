@@ -141,6 +141,10 @@ esac
 if [ -e "$test_file.options" ]
 then
     options="$options $(cat "$test_file.options")"
+fi
+
+if [ -n "$options" ]
+then
     test_string="$test_file [ $options ]"
 else
     test_string="$test_file"
