@@ -90,7 +90,7 @@ static
 void nra_plugin_construct(plugin_t* plugin, plugin_context_t* ctx) {
   nra_plugin_t* nra = (nra_plugin_t*) plugin;
 
-  // OPTIONS NOT AVAILABLE IN CONSTRUCTOR, THEY ARE SETUP LATER
+  // OPTIONS NOT AVAILABLE IN CONSTRUCTOR, THEY ARE SET UP LATER
 
   nra->ctx = ctx;
   nra->last_decided_and_unprocessed = variable_null;
@@ -2513,6 +2513,7 @@ void nra_plugin_learn(plugin_t* plugin, trail_token_t* prop) {
 
 }
 
+static
 bool nra_plugin_simplify_conflict_literal(plugin_t* plugin, term_t lit, ivector_t* output) {
   nra_plugin_t* nra = (nra_plugin_t*) plugin;
 
