@@ -227,6 +227,7 @@ bool feasible_set_db_contains_reason(feasible_set_db_t* db, variable_t x, variab
 
 /** Update the feasible set of the variable with a new set */
 // TODO create an option that takes an const lp_feasibility_set_t and copies on demand.
+// TODO improve return value to distinguish between real and int conflict
 bool
 feasible_set_db_update(feasible_set_db_t *db, variable_t x, lp_feasibility_set_t *new_set, const variable_t *cstr_list,
                        uint32_t cstr_count, int32_t aux_id) {

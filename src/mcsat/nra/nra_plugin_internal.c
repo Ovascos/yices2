@@ -121,12 +121,6 @@ void nra_plugin_report_int_conflict(nra_plugin_t* nra, trail_token_t* prop, vari
   (*nra->stats.conflicts_int) ++;
 }
 
-void nra_plugin_report_clause_conflict(nra_plugin_t* nra, trail_token_t* prop, variable_t variable) {
-  prop->conflict(prop);
-  nra->conflict_variable_clause = variable;
-  (*nra->stats.conflicts_clause) ++;
-}
-
 void nra_plugin_report_assumption_conflict(nra_plugin_t* nra, trail_token_t* prop, variable_t variable, const mcsat_value_t* value) {
   prop->conflict(prop);
   nra->conflict_variable_assumption = variable;
