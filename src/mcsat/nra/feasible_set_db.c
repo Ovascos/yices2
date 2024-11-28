@@ -703,6 +703,11 @@ const lp_feasibility_set_t* feasible_set_db_iterator_get_set(const feasible_set_
   return it->db->memory[it->pos].feasible_set;
 }
 
+const lp_feasibility_set_t* feasible_set_db_iterator_get_reason_set(const feasible_set_db_iterator_t *it) {
+  assert(it->pos != 0);
+  return it->db->memory[it->pos].reason_feasible_set;
+}
+
 uint32_t feasible_set_db_iterator_get_reason_size(const feasible_set_db_iterator_t *it) {
   assert(it->pos != 0);
   return it->db->memory[it->pos].reasons_size;

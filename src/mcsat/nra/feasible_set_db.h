@@ -111,6 +111,9 @@ void feasible_set_db_iterator_next(feasible_set_db_iterator_t *it);
 /** Gets the current feasible set */
 const lp_feasibility_set_t* feasible_set_db_iterator_get_set(const feasible_set_db_iterator_t *it);
 
+/** Gets the current reason feasible set */
+const lp_feasibility_set_t* feasible_set_db_iterator_get_reason_set(const feasible_set_db_iterator_t *it);
+
 /** Gets the number of reasons of the current element */
 uint32_t feasible_set_db_iterator_get_reason_size(const feasible_set_db_iterator_t *it);
 
