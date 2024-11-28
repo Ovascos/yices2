@@ -1631,6 +1631,21 @@ void nra_plugin_get_real_conflict(nra_plugin_t* nra, const int_mset_t* pos, cons
 
   feasible_set_db_get_conflict_reasons(nra->feasible_set_db, x, NULL, &core, &lemma_reasons, &ct_refs);
 
+#ifndef NDEBUG
+  if (nra->ctx->options->clause_level_reasoning == CLAUSE_LEVEL_SINGLE) {
+    feasible_set_db_iterator_t it;
+    feasible_set_db_iterator_construct(&it, nra->feasible_set_db, x);
+    assert(!feasible_set_db_iterator_done(&it));
+    uint32_t reasons_cnt = feasible_set_db_iterator_get_reason_size(&it);
+    if (reasons_cnt > 1) {
+      assert(lp_feasibility_set_is_empty(feasible_set_db_iterator_get_reason_set(&it)));
+      assert(core.size == 0);
+      assert(lemma_reasons.size == reasons_cnt);
+    }
+    feasible_set_db_iterator_destruct(&it);
+  }
+#endif
+
   if (ctx_trace_enabled(nra->ctx, "nra::conflict")) {
     ctx_trace_printf(nra->ctx, "nra_plugin_get_conflict(): core:\n");
     for (i = 0; i < core.size; ++ i) {
