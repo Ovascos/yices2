@@ -392,8 +392,6 @@ void nra_plugin_clause_value_process_unit_clauses(nra_plugin_t* nra, trail_token
       continue;
     }
 
-    assert(!trail_has_value(nra->ctx->trail, x));
-
     if (ctx_trace_enabled(nra->ctx, "nra::clause-level")) {
       ctx_trace_printf(nra->ctx, "Found unit clause in ");
       variable_db_print_variable(nra->ctx->var_db, x, ctx_trace_out(nra->ctx));
@@ -401,6 +399,9 @@ void nra_plugin_clause_value_process_unit_clauses(nra_plugin_t* nra, trail_token
       clause_print(clause_tracker_get_mcsat_clause(ct, ct_ref), nra->ctx->var_db, ctx_trace_out(nra->ctx));
       ctx_trace_printf(nra->ctx, "\n");
     }
+
+    // trail can have a value for x if x was propagated in this turn. Right now, this can only happen at decision level 0.
+    assert(nra->ctx->trail->decision_level == 0 || !trail_has_value(nra->ctx->trail, x));
 
     clause_tracker_get_constraints(ct, ct_ref, &literals);
 

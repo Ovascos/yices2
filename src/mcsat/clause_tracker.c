@@ -197,8 +197,104 @@ void clause_tracker_list_ensure_memory(clause_tracker_t *ct) {
   assert(ct->memory_size < ct->memory_capacity);
 }
 
+static inline
+bool clause_tracker_is_unit(const clause_tracker_t *ct, variable_t constraint) {
+  assert(variable_db_is_boolean(ct->ctx->var_db, constraint));
+  return clause_tracker_query(ct, constraint) && constraint_unit_info_get(ct->unit_info, constraint) == CONSTRAINT_UNIT;
+}
+
+static inline
+bool clause_tracker_is_tracked(const clause_tracker_t *ct, variable_t constraint) {
+  return clause_tracker_is_unit(ct, constraint) || trail_has_value(ct->ctx->trail, constraint);
+}
+
+#ifndef NDEBUG
+static
+bool clause_tracker_check(const clause_tracker_t *ct) {
+  if (!ctx_trace_enabled(ct->ctx, "clause-tracker::check")) {
+    return true;
+  }
+
+  int_hset_t watched;
+  init_int_hset_copy(&watched, &ct->clauses);
+
+  // check the references
+  for(int_hmap_pair_t *p = int_hmap_first_record(&ct->var_to_list_element);
+      p != NULL;
+      p = int_hmap_next_record(&ct->var_to_list_element, p)) {
+    assert(p->val > 0 || p->val < ct->memory_size);
+    uint32_t i = p->val;
+    while(i) {
+      clause_tracker_list_element_t *e = ct->memory + i;
+      assert(p->key == e->unit_variable);
+      i = e->prev;
+    }
+  }
+
+  // check the watchers
+  for(ptr_hmap_pair_t *p = ptr_hmap_first_record(&ct->watch_list);
+      p != NULL;
+      p = ptr_hmap_next_record(&ct->watch_list, p)) {
+    assert(p->val);
+    int_hset_t tmp;
+    init_int_hset_copy(&tmp, p->val);
+    int_hset_close(&tmp);
+    for (int i = 0; i < tmp.nelems; ++i) {
+      clause_ref_t c_ref = tmp.data[i];
+      assert(!clause_tracker_list_contains(ct, c_ref));
+      int_hset_remove(&watched, c_ref);
+    }
+    delete_int_hset(&tmp);
+  }
+
+  // check that all list items are unit
+  for (int i = 1; i < ct->memory_size; ++i) {
+    clause_tracker_list_element_t *e = ct->memory + i;
+
+    assert(e->c_ref != clause_ref_null);
+    assert(e->unit_variable != variable_null || e->prev == 0);
+    bool removed = int_hset_remove(&watched, e->c_ref);
+    assert(removed); // otherwise, it is watched or a duplicate in the list
+
+    // assert that clause is actually unit
+    const mcsat_clause_t *C = clause_tracker_get_clause(ct, e->c_ref);
+    for (int j = 0; j < C->size; ++j) {
+      assert(clause_tracker_is_tracked(ct, literal_get_variable(C->literals[j])));
+    }
+  }
+
+  // check that all clauses are actually watched
+  assert(int_hset_is_empty(&watched));
+  delete_int_hset(&watched);
+
+  return true;
+}
+
+static
+bool clause_tracker_has_watchers(const clause_tracker_t *ct, clause_ref_t c_ref) {
+  for(ptr_hmap_pair_t *p = ptr_hmap_first_record(&ct->watch_list);
+      p != NULL;
+      p = ptr_hmap_next_record(&ct->watch_list, p)) {
+    assert(p->val);
+    int_hset_t tmp;
+    init_int_hset_copy(&tmp, p->val);
+    int_hset_close(&tmp);
+    for (int i = 0; i < tmp.nelems; ++i) {
+      if (c_ref == tmp.data[i]) {
+        fprintf(stderr, "FAIL: %d", p->key);
+        return true;
+      }
+    }
+    delete_int_hset(&tmp);
+  }
+  return false;
+}
+
+#endif
+
 static
 void clause_tracker_list_push(clause_tracker_t *ct, clause_ref_t c_ref, variable_t x) {
+  assert(!clause_tracker_has_watchers(ct, c_ref));
   uint32_t index = ct->memory_size++;
   clause_tracker_list_ensure_memory(ct);
   clause_tracker_list_element_t *new = ct->memory + index;
@@ -315,29 +411,24 @@ void clause_tracker_reset(clause_tracker_t *ct) {
   clause_tracker_watchers_delete(ct);
 }
 
-static inline
-bool clause_tracker_is_unit(const clause_tracker_t *ct, variable_t constraint) {
-  assert(variable_db_is_boolean(ct->ctx->var_db, constraint));
-  return clause_tracker_query(ct, constraint) && constraint_unit_info_get(ct->unit_info, constraint) == CONSTRAINT_UNIT;
-}
-
-static inline
-bool clause_tracker_is_tracked(const clause_tracker_t *ct, variable_t constraint) {
-  return clause_tracker_is_unit(ct, constraint) || trail_has_value(ct->ctx->trail, constraint);
-}
-
 /** Tries to find a new watch constraint for clause. Returns true if the clause is c-unit. */
 static
 bool clause_watch_update(clause_tracker_t *ct, clause_ref_t c_ref) {
-  assert(!clause_tracker_list_contains(ct, c_ref));
-
   const mcsat_clause_t *c = clause_tracker_get_clause(ct, c_ref);
 
-  // remove all existing trackers
-  for (int i = 0; i < c->size; ++i) {
+  if (ctx_trace_enabled(ct->ctx, "clause-tracking")) {
+    ctx_trace_printf(ct->ctx, "watch update clause: ");
+    clause_print(c, ct->ctx->var_db, ctx_trace_out(ct->ctx));
+    ctx_trace_printf(ct->ctx, "\n");
+  }
+
+  // remove all existing trackers (up to null termination, c->size could have been decremented in the meantime)
+  for (int i = 0; c->literals[i]; ++i) {
     variable_t v = literal_get_variable(c->literals[i]);
     clause_tracker_watcher_remove(ct, v, c_ref);
   }
+
+  assert(!clause_tracker_has_watchers(ct, c_ref));
 
   // first, check if there are untracked
   for (uint32_t i = 0; i < c->size; ++i) {
@@ -396,6 +487,7 @@ bool clause_watch_update(clause_tracker_t *ct, clause_ref_t c_ref) {
 static
 uint32_t clause_tracker_update_constraint(clause_tracker_t *ct, variable_t constraint) {
   assert(clause_tracker_is_tracked(ct, constraint));
+  assert(clause_tracker_check(ct));
   uint32_t count = 0;
 
   // find all watch_list watched by the constraint
@@ -517,69 +609,6 @@ clause_ref_t clause_tracker_get_clause_ref(const clause_tracker_t *ct, clause_tr
 const mcsat_clause_t* clause_tracker_get_mcsat_clause(const clause_tracker_t *ct, clause_tracker_ref_t ref) {
   return clause_tracker_get_clause(ct, clause_tracker_get_clause_ref(ct, ref));
 }
-
-#ifndef NDEBUG
-static 
-bool clause_tracker_check(const clause_tracker_t *ct) {
-  if (!ctx_trace_enabled(ct->ctx, "clause-tracker::check")) {
-    return true;
-  }
-
-  int_hset_t watched;
-  init_int_hset_copy(&watched, &ct->clauses);
-
-  // check the references
-  for(int_hmap_pair_t *p = int_hmap_first_record(&ct->var_to_list_element);
-      p != NULL;
-      p = int_hmap_next_record(&ct->var_to_list_element, p)) {
-    assert(p->val > 0 || p->val < ct->memory_size);
-    uint32_t i = p->val;
-    while(i) {
-      clause_tracker_list_element_t *e = ct->memory + i;
-      assert(p->key == e->unit_variable);
-      i = e->prev;
-    }
-  }
-
-  // check the watchers
-  for(ptr_hmap_pair_t *p = ptr_hmap_first_record(&ct->watch_list);
-      p != NULL;
-      p = ptr_hmap_next_record(&ct->watch_list, p)) {
-    assert(p->val);
-    int_hset_t tmp;
-    init_int_hset_copy(&tmp, p->val);
-    int_hset_close(&tmp);
-    for (int i = 0; i < tmp.nelems; ++i) {
-      clause_ref_t c_ref = tmp.data[i];
-      assert(!clause_tracker_list_contains(ct, c_ref));
-      int_hset_remove(&watched, c_ref);
-    }
-    delete_int_hset(&tmp);
-  }
-
-  // check that all list items are unit
-  for (int i = 1; i < ct->memory_size; ++i) {
-    clause_tracker_list_element_t *e = ct->memory + i;
-
-    assert(e->c_ref != clause_ref_null);
-    assert(e->unit_variable != variable_null || e->prev == 0);
-    bool removed = int_hset_remove(&watched, e->c_ref);
-    assert(removed); // otherwise, it is watched or a duplicate in the list
-
-    // assert that clause is actually unit
-    const mcsat_clause_t *C = clause_tracker_get_clause(ct, e->c_ref);
-    for (int j = 0; j < C->size; ++j) {
-      assert(clause_tracker_is_tracked(ct, literal_get_variable(C->literals[j])));
-    }
-  }
-
-  // check that all clauses are actually watched
-  assert(int_hset_is_empty(&watched));
-  delete_int_hset(&watched);
-
-  return true;
-}
-#endif
 
 void clause_tracker_push(clause_tracker_t *ct) {
   scope_holder_push(&ct->scope,
