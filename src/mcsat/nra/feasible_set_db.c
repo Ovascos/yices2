@@ -319,6 +319,18 @@ feasible_set_db_update(feasible_set_db_t *db, variable_t x, lp_feasibility_set_t
   return feasible;
 }
 
+// TODO check for empty (int or real) intersection of two lp_feasibility_set_t without generating the intersection
+lp_feasibility_set_t* feasible_set_db_intersect(const feasible_set_db_t *db1, const feasible_set_db_t *db2, variable_t x) {
+  const lp_feasibility_set_t
+    *s1 = feasible_set_db_get(db1, x),
+    *s2 = feasible_set_db_get(db2, x);
+
+  if (s1 == NULL && s2 == NULL) return lp_feasibility_set_new_full();
+  if (s1 == NULL) return lp_feasibility_set_new_copy(s2);
+  if (s2 == NULL) return lp_feasibility_set_new_copy(s1);
+  return lp_feasibility_set_intersect(s1, s2);
+}
+
 void feasible_set_db_push(feasible_set_db_t* db) {
   scope_holder_push(&db->scope,
     &db->updates_size,
@@ -583,14 +595,18 @@ void feasible_set_db_get_conflict_reasons(const feasible_set_db_t *db, variable_
       ivector_push(aux_ids_out, element->aux_id);
     }
     if (element->reasons_size == 1) {
-      variable_t reason = element->reason;
-      assert(variable_db_is_boolean(db->plugin->ctx->var_db, reason));
-      ivector_push(reasons_out, reason);
-    } else {
-      for (uint32_t j = 0; j < element->reasons_size; ++j) {
-        variable_t reason = element->lemma_reasons[j];
+      if (reasons_out != NULL) {
+        variable_t reason = element->reason;
         assert(variable_db_is_boolean(db->plugin->ctx->var_db, reason));
-        ivector_push(lemma_reasons, reason);
+        ivector_push(reasons_out, reason);
+      }
+    } else {
+      if (lemma_reasons != NULL) {
+        for (uint32_t j = 0; j < element->reasons_size; ++j) {
+          variable_t reason = element->lemma_reasons[j];
+          assert(variable_db_is_boolean(db->plugin->ctx->var_db, reason));
+          ivector_push(lemma_reasons, reason);
+        }
       }
     }
   }
@@ -731,4 +747,9 @@ void feasible_set_db_iterator_get_reasons(const feasible_set_db_iterator_t *it, 
       ivector_push(reasons, elem->lemma_reasons[i]);
     }
   }
+}
+
+int32_t feasible_set_db_iterator_get_aux_id(const feasible_set_db_iterator_t *it) {
+  assert(it->pos != 0);
+  return it->db->memory[it->pos].aux_id;
 }

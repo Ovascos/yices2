@@ -46,6 +46,8 @@ bool
 feasible_set_db_update(feasible_set_db_t *db, variable_t x, lp_feasibility_set_t *new_set, const variable_t *reasons,
                        uint32_t reasons_count, int32_t aux_id);
 
+lp_feasibility_set_t* feasible_set_db_intersect(const feasible_set_db_t *db1, const feasible_set_db_t *db2, variable_t x);
+
 /** Checks if constraint cstr is (part of) a reason for variable x */
 bool feasible_set_db_contains_reason(feasible_set_db_t* db, variable_t x, variable_t cstr);
 
@@ -122,3 +124,5 @@ variable_t feasible_set_db_iterator_get_reason(const feasible_set_db_iterator_t 
 
 /** Adds all reasons of the current element to reasons */
 void feasible_set_db_iterator_get_reasons(const feasible_set_db_iterator_t *it, ivector_t *reasons);
+
+int32_t feasible_set_db_iterator_get_aux_id(const feasible_set_db_iterator_t *it);
