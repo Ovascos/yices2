@@ -145,6 +145,9 @@ struct plugin_context_s {
   /** Request a variable to be a next decision variable */
   void (*hint_next_decision) (plugin_context_t* self, variable_t x);
 
+  /** Request a variable of xs to a next decision. Uses variable heuristic to pick. */
+  void (*hint_any_decision) (plugin_context_t* self, const ivector_t* xs);
+
   /** Add model value hint in the value cache */
   void (*hint_value) (plugin_context_t* self, variable_t x, const mcsat_value_t* val);
 

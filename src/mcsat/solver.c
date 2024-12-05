@@ -648,7 +648,21 @@ void mcsat_add_top_decision(mcsat_solver_t* mcsat, variable_t x) {
 
 static inline
 void mcsat_add_decision_hint(mcsat_solver_t* mcsat, variable_t x) {
+  assert(x != variable_null);
   int_queue_push(&mcsat->hinted_decision_vars, x);
+}
+
+static
+void mcsat_add_decision_hint_pick(mcsat_solver_t* mcsat, const ivector_t* xs) {
+  const var_queue_t *var_q = &mcsat->var_queue;
+  assert(xs->size > 0);
+  variable_t x = xs->data[0];
+  for (uint32_t i = 1; i < xs->size; ++ i) {
+    if (var_queue_cmp_variables(var_q, x, xs->data[i]) < 0) {
+      x = xs->data[i];
+    }
+  }
+  mcsat_add_decision_hint(mcsat, x);
 }
 
 static inline
@@ -711,6 +725,13 @@ void mcsat_plugin_context_hint_next_decision(plugin_context_t* self, variable_t 
   mcsat_plugin_context_t* mctx;
   mctx = (mcsat_plugin_context_t*) self;
   mcsat_add_decision_hint(mctx->mcsat, x);
+}
+
+static
+void mcsat_plugin_context_hint_any_decision(plugin_context_t* self, const ivector_t* xs) {
+  mcsat_plugin_context_t* mctx;
+  mctx = (mcsat_plugin_context_t*) self;
+  mcsat_add_decision_hint_pick(mctx->mcsat, xs);
 }
 
 /*
@@ -781,6 +802,7 @@ void mcsat_plugin_context_construct(mcsat_plugin_context_t* ctx, mcsat_solver_t*
   ctx->ctx.cmp_variables = mcsat_plugin_context_cmp_variables;
   ctx->ctx.request_top_decision = mcsat_plugin_context_request_top_decision;
   ctx->ctx.hint_next_decision = mcsat_plugin_context_hint_next_decision;
+  ctx->ctx.hint_any_decision = mcsat_plugin_context_hint_any_decision;
   ctx->ctx.hint_value = mcsat_plugin_context_hint_value;
   ctx->mcsat = mcsat;
   ctx->plugin_name = plugin_name;
