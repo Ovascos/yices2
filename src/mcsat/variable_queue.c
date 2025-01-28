@@ -22,9 +22,8 @@
 
 #include <float.h>
 
-#define VAR_DECAY_FACTOR              (0.95)
+#define VAR_DECAY_FACTOR              (0.95)  // maybe make this an option
 #define VAR_ACTIVITY_THRESHOLD        (1e100)
-#define INV_VAR_ACTIVITY_THRESHOLD    (1e-100)
 #define INIT_VAR_ACTIVITY_INCREMENT   (1.0)
 
 #define VAR_QUEUE_INITIAL_SIZE        (100)
@@ -227,14 +226,21 @@ variable_t var_queue_random(var_queue_t *queue, double* seed) {
 static
 void var_queue_rescale_activities(var_queue_t *queue) {
   uint32_t i, n;
-  double *act;
+  double *act, divider, factor;
 
+  // max(act_increment, act[x] forall var x)
   n = queue->size;
   act = queue->activity;
+  divider = queue->act_increment;
   for (i=0; i<n; i++) {
-    act[i] *= INV_VAR_ACTIVITY_THRESHOLD;
+    if (act[i] > divider) { divider = act[i]; }
   }
-  queue->act_increment *= INV_VAR_ACTIVITY_THRESHOLD;
+  assert(divider > 0);
+  factor = 1.0 / divider;
+  for (i=0; i<n; i++) {
+    act[i] *= factor;
+  }
+  queue->act_increment *= factor;
 }
 
 
