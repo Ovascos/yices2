@@ -755,9 +755,11 @@ term_t bool_plugin_explain_propagation(plugin_t* plugin, variable_t var, ivector
     }
     ivector_push(reasons, opposite_term(t_i));
 
+#if 0
     // Bump the reason variable -- give more weightage to boolean reasons
     bp->ctx->bump_variable_n(bp->ctx, x_i,
 			     bp->heuristic_params.bool_var_bump_factor);
+#endif
   }
 
   // Bump the clause as useful
