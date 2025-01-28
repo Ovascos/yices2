@@ -513,13 +513,11 @@ void nra_plugin_new_term_notify(plugin_t* plugin, term_t t, trail_token_t* prop)
     }
 
     // Bump variables
-#if 0
     for (i = 0; i < t_variables_list->size; ++ i) {
       variable_t x = t_variables_list->data[i];
       uint32_t deg = int_mset_contains(&t_variables, x);
       nra->ctx->bump_variable_n(nra->ctx, x, deg);
     }
-#endif
 
     // Sort variables by trail index
     int_array_sort2(t_variables_list->data, t_variables_list->size, (void*) nra->ctx->trail, nra_plugin_trail_variable_compare);

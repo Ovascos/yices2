@@ -650,7 +650,7 @@ void mcsat_add_decision_hint(mcsat_solver_t* mcsat, variable_t x) {
 
 static inline
 void mcsat_bump_variable(mcsat_solver_t* mcsat, variable_t x, uint32_t factor) {
-  var_queue_bump_variable(&mcsat->var_queue, x, 1);
+  var_queue_bump_variable(&mcsat->var_queue, x, factor);
 }
 
 #if 0
