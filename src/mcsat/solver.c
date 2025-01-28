@@ -675,9 +675,6 @@ void mcsat_bump_variables_mset(mcsat_solver_t* mcsat, const int_mset_t* vars) {
 
 static
 void mcsat_plugin_context_bump_variable(plugin_context_t* self, variable_t x) {
-  // ignore plugin bumping requests
-  return;
-
   mcsat_plugin_context_t* mctx;
 
   mctx = (mcsat_plugin_context_t*) self;
@@ -686,9 +683,6 @@ void mcsat_plugin_context_bump_variable(plugin_context_t* self, variable_t x) {
 
 static
 void mcsat_plugin_context_bump_variable_n(plugin_context_t* self, variable_t x, uint32_t n) {
-  // ignore plugin bumping requests
-  return;
-
   mcsat_plugin_context_t* mctx;
 
   mctx = (mcsat_plugin_context_t*) self;
