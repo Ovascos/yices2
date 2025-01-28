@@ -52,7 +52,6 @@ void var_queue_construct(var_queue_t *queue) {
   queue->vmax = 0;
 
   queue->act_increment = INIT_VAR_ACTIVITY_INCREMENT;
-  queue->inv_act_decay = 1/VAR_DECAY_FACTOR;
 }
 
 void var_queue_extend(var_queue_t *queue, uint32_t n) {
@@ -188,7 +187,7 @@ void var_queue_insert(var_queue_t *queue, variable_t x) {
 
 
 /** Check whether the heap is empty. */
-bool var_queue_is_empty(var_queue_t *queue) {
+bool var_queue_is_empty(const var_queue_t *queue) {
   return queue->heap_last == 0;
 }
 
@@ -225,6 +224,7 @@ variable_t var_queue_random(var_queue_t *queue, double* seed) {
 }
 
 /** Rescale variable activities: divide by VAR_ACTIVITY_THRESHOLD. */
+static
 void var_queue_rescale_activities(var_queue_t *queue) {
   uint32_t i, n;
   double *act;
@@ -285,7 +285,10 @@ int var_queue_cmp_variables(var_queue_t *queue, variable_t x, variable_t y) {
 
 /** Decay. */
 void var_queue_decay_activities(var_queue_t *queue) {
-  queue->act_increment *= queue->inv_act_decay;
+  // called after every conflict
+  if ((queue->act_increment *= 1/VAR_DECAY_FACTOR) > VAR_ACTIVITY_THRESHOLD) {
+    var_queue_rescale_activities(queue);
+  }
 }
 
 /** Sweep the variables */

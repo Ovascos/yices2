@@ -58,7 +58,6 @@ typedef struct var_queue_s {
   uint32_t size;
   uint32_t vmax;
   double act_increment;
-  double inv_act_decay;
 } var_queue_t;
 
 /**
@@ -79,7 +78,7 @@ void var_queue_extend(var_queue_t *queue, uint32_t n);
 void var_queue_destruct(var_queue_t *queue);
 
 /** Check whether the heap is empty. */
-bool var_queue_is_empty(var_queue_t *queue);
+bool var_queue_is_empty(const var_queue_t *queue);
 
 /** Get and remove top element (the heap must not be empty) */
 variable_t var_queue_pop(var_queue_t *queue);
