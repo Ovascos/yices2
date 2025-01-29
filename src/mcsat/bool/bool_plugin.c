@@ -131,7 +131,7 @@ void bool_plugin_heuristics_init(bool_plugin_t* bp) {
   bp->heuristic_params.lemma_limit_factor = 1.05;
 
   // Bool var scoring
-  bp->heuristic_params.bool_var_bump_factor = 25;
+  bp->heuristic_params.bool_var_bump_factor = 50;
 }
 
 static
