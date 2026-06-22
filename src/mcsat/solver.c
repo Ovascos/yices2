@@ -364,9 +364,6 @@ static
 void mcsat_add_lemma(mcsat_solver_t* mcsat, ivector_t* lemma, term_t decision_bound);
 
 static
-void mcsat_set_interpolant_from_internal(mcsat_solver_t* mcsat, term_t interpolant);
-
-static
 bool mcsat_flatten_model_value(mcsat_solver_t* mcsat, value_table_t* vtbl, type_t tau, value_t value, ivector_t* out);
 
 static
@@ -1846,20 +1843,16 @@ void mcsat_assert_formula(mcsat_solver_t* mcsat, term_t f, bool assumption_oblig
 static
 bool mcsat_decide_one_of(mcsat_solver_t* mcsat, ivector_t* literals, term_t bound) {
 
-  uint32_t i, unassigned_count;
-  term_t literal;
-  term_t literal_pos;
-  variable_t literal_var;
-
+  uint32_t unassigned_count = 0;
   term_t to_decide_lit = NULL_TERM;
   term_t to_decide_atom = NULL_TERM;
   variable_t to_decide_var = variable_null;
 
-  for (i = 0, unassigned_count = 0; i < literals->size; ++ i) {
+  for (uint32_t i = 0; i < literals->size; ++ i) {
 
-    literal = literals->data[i];
-    literal_pos = unsigned_term(literal);
-    literal_var = variable_db_get_variable_if_exists(mcsat->var_db, literal_pos);
+    term_t literal = literals->data[i];
+    term_t literal_pos = unsigned_term(literal);
+    variable_t literal_var = variable_db_get_variable_if_exists(mcsat->var_db, literal_pos);
 
     assert(literal_var != variable_null);
 
@@ -1908,19 +1901,14 @@ bool mcsat_decide_one_of(mcsat_solver_t* mcsat, ivector_t* literals, term_t boun
 /**
  * Add a lemma (a disjunction). Each lemma needs to lead to some progress. This
  * means that:
- *  * no literal should evaluate to true
- *  * if only one literal is false, it should be propagated by one of the plugins
- *  * if more then one literals is false, one of them should be decided to true
+ *  - no literal should evaluate to true
+ *  - if only one literal is false, it should be propagated by one of the plugins
+ *  - if more than one literal is false, one of them should be decided to true
  *    by one of the plugins
  */
 static
 void mcsat_add_lemma(mcsat_solver_t* mcsat, ivector_t* lemma, term_t decision_bound) {
-
-  uint32_t i, level, top_level;
   ivector_t unassigned;
-  term_t disjunct, disjunct_pos;
-  variable_t disjunct_pos_var;
-  plugin_t* plugin;
 
   (*mcsat->solver_stats.lemmas)++;
 
@@ -1930,7 +1918,7 @@ void mcsat_add_lemma(mcsat_solver_t* mcsat, ivector_t* lemma, term_t decision_bo
 
   if (trace_enabled(mcsat->ctx->trace, "mcsat::lemma")) {
     mcsat_trace_printf(mcsat->ctx->trace, "lemma:\n");
-    for (i = 0; i < lemma->size; ++ i) {
+    for (uint32_t i = 0; i < lemma->size; ++ i) {
       mcsat_trace_printf(mcsat->ctx->trace, "\t");
       trace_term_ln(mcsat->ctx->trace, mcsat->ctx->terms, lemma->data[i]);
     }
@@ -1939,14 +1927,14 @@ void mcsat_add_lemma(mcsat_solver_t* mcsat, ivector_t* lemma, term_t decision_bo
 
   init_ivector(&unassigned, 0);
 
-  top_level = mcsat->trail->decision_level_base;
-  for (i = 0; i < lemma->size; ++ i) {
-
+  uint32_t top_level = mcsat->trail->decision_level_base;
+  for (uint32_t i = 0; i < lemma->size; ++ i) {
     // Get the variables for the disjunct
-    disjunct = lemma->data[i];
+    const term_t disjunct = lemma->data[i];
     assert(term_type_kind(mcsat->terms, disjunct) == BOOL_TYPE);
-    disjunct_pos = unsigned_term(disjunct);
-    disjunct_pos_var = variable_db_get_variable(mcsat->var_db, disjunct_pos);
+    const term_t disjunct_pos = unsigned_term(disjunct);
+    const variable_t disjunct_pos_var = variable_db_get_variable(mcsat->var_db, disjunct_pos);
+
     if (trace_enabled(mcsat->ctx->trace, "mcsat::lemma")) {
       mcsat_trace_printf(mcsat->ctx->trace, "literal: ");
       variable_db_print_variable(mcsat->var_db, disjunct_pos_var, stderr);
@@ -1967,12 +1955,12 @@ void mcsat_add_lemma(mcsat_solver_t* mcsat, ivector_t* lemma, term_t decision_bo
     if (trail_has_value(mcsat->trail, disjunct_pos_var)) {
       assert(trail_get_value(mcsat->trail, disjunct_pos_var)->type == VALUE_BOOLEAN);
       assert(trail_get_value(mcsat->trail, disjunct_pos_var)->b == (disjunct != disjunct_pos));
-      level = trail_get_level(mcsat->trail, disjunct_pos_var);
+      const uint32_t level = trail_get_level(mcsat->trail, disjunct_pos_var);
       if (level > top_level) {
         top_level = level;
       }
     } else {
-      ivector_push(&unassigned, lemma->data[i]);
+      ivector_push(&unassigned, disjunct);
     }
   }
 
@@ -1989,11 +1977,11 @@ void mcsat_add_lemma(mcsat_solver_t* mcsat, ivector_t* lemma, term_t decision_bo
     // Non-UIP, we're already below, and we'll split on a new term, that's enough
   }
 
-  uint32_t old_trail_size = mcsat->trail->elements.size;
+  const uint32_t old_trail_size = mcsat->trail->elements.size;
 
   // Notify the plugins about the lemma
-  for (i = 0; i < mcsat->plugins_count; ++ i) {
-    plugin = mcsat->plugins[i].plugin;
+  for (uint32_t i = 0; i < mcsat->plugins_count; ++ i) {
+    plugin_t* plugin = mcsat->plugins[i].plugin;
     if (plugin->new_lemma_notify) {
       // Make the token
       plugin_trail_token_t prop_token;
@@ -2004,12 +1992,12 @@ void mcsat_add_lemma(mcsat_solver_t* mcsat, ivector_t* lemma, term_t decision_bo
 
   // Propagate any
   mcsat_propagate(mcsat, false);
-  bool propagated = old_trail_size < mcsat->trail->elements.size;
+  const bool propagated = old_trail_size < mcsat->trail->elements.size;
 
   // Decide a literal if necessary. At this point, if it was UIP they are all
   // assigned. If not, we assign arbitrary.
   bool decided = false;
-  bool consistent = mcsat_is_consistent(mcsat);
+  const bool consistent = mcsat_is_consistent(mcsat);
   if (consistent) {
     decided = mcsat_decide_one_of(mcsat, &unassigned, decision_bound);
   }
@@ -2270,7 +2258,7 @@ term_t mcsat_analyze_final(mcsat_solver_t* mcsat, conflict_t* input_conflict) {
   return interpolant;
 }
 
-static
+static inline
 void mcsat_set_interpolant_from_internal(mcsat_solver_t* mcsat, term_t interpolant) {
   mcsat->interpolant = preprocessor_unblast_term(&mcsat->preprocessor, interpolant);
 }
@@ -2339,35 +2327,43 @@ bool mcsat_conflict_with_assumptions(mcsat_solver_t* mcsat, uint32_t conflict_le
 }
 
 static
+void mcsat_assumption_conflict_calc_interpolant(mcsat_solver_t* mcsat)
+{
+  if (mcsat->plugin_in_conflict) {
+    ivector_t reason;
+    init_ivector(&reason, 0);
+
+    const uint32_t plugin_i = mcsat->plugin_in_conflict->ctx.plugin_id;
+    plugin_t* plugin = mcsat->plugins[plugin_i].plugin;
+    const term_t t = plugin->explain_propagation(plugin, mcsat->variable_in_conflict, &reason);
+    const term_t x = variable_db_get_term(mcsat->var_db, mcsat->variable_in_conflict);
+    const term_t x_eq_t = mk_eq(&mcsat->tm, x, t);
+    // reason => x_eq_t is valid
+    // reason && x_eq_t evaluates to false with assumptions
+    // but x_eq_t evaluates to true with trail
+    ivector_push(&reason, opposite_term(x_eq_t));
+
+    conflict_t conflict;
+    conflict_construct(&conflict, &reason, false, mcsat_evaluator_get(mcsat), mcsat->var_db, mcsat->trail, &mcsat->tm, mcsat->ctx->trace);
+    mcsat_set_interpolant_from_internal(mcsat, mcsat_analyze_final(mcsat, &conflict));
+    conflict_destruct(&conflict);
+    delete_ivector(&reason);
+  } else {
+    // an assertion, interpolant is !assertion
+    const term_t interpolant = variable_db_get_term(mcsat->var_db, mcsat->variable_in_conflict);
+    const bool value = trail_get_boolean_value(mcsat->trail, mcsat->variable_in_conflict);
+    mcsat_set_interpolant_from_internal(mcsat, value ? interpolant : opposite_term(interpolant));
+  }
+}
+
+static
 void mcsat_analyze_conflicts(mcsat_solver_t* mcsat, uint32_t* restart_resource) {
 
-  conflict_t conflict;
-  plugin_t* plugin = NULL;
-  uint32_t plugin_i = MCSAT_MAX_PLUGINS;
-  tracer_t* trace;
-
-  uint32_t conflict_level, backtrack_level;
-  variable_t var;
-
-  term_t decision_bound = NULL_TERM;
-
-  ivector_t reason;
-  term_t substitution;
-
-  ivector_t* conflict_disjuncts;
-
-  init_ivector(&reason, 0);
-  trace = mcsat->ctx->trace;
-
-  // Plugin that's in conflict
-  if (mcsat->plugin_in_conflict) {
-    plugin_i = mcsat->plugin_in_conflict->ctx.plugin_id;
-    plugin = mcsat->plugins[plugin_i].plugin;
-  }
+  tracer_t* trace = mcsat->ctx->trace;
 
   if (trace_enabled(trace, "mcsat::conflict")) {
-    if (plugin_i != MCSAT_MAX_PLUGINS) {
-      mcsat_trace_printf(trace, "analyzing conflict from %s\n", mcsat->plugins[plugin_i].plugin_name);
+    if (mcsat->plugin_in_conflict) {
+      mcsat_trace_printf(trace, "analyzing conflict from %s\n", mcsat->plugin_in_conflict->plugin_name);
     } else {
       mcsat_trace_printf(trace, "analyzing conflict from assertion\n");
     }
@@ -2380,26 +2376,8 @@ void mcsat_analyze_conflicts(mcsat_solver_t* mcsat, uint32_t* restart_resource) 
     // This conflict happened because an assumption conflicts with an already
     // propagated value. We're unsat here, but we need to produce a clause
     if (mcsat->ctx->mcsat_options.model_interpolation) {
-      if (plugin) {
-        term_t t = plugin->explain_propagation(plugin, mcsat->variable_in_conflict, &reason);
-        term_t x = variable_db_get_term(mcsat->var_db, mcsat->variable_in_conflict);
-        term_t x_eq_t = mk_eq(&mcsat->tm, x, t);
-        // reason => x_eq_t is valid
-        // reason && x_eq_t evaluates to false with assumptions
-        // but x_eq_t evaluates to true with trail
-        ivector_push(&reason, opposite_term(x_eq_t));
-        conflict_construct(&conflict, &reason, false, mcsat_evaluator_get(mcsat), mcsat->var_db, mcsat->trail, &mcsat->tm, mcsat->ctx->trace);
-        mcsat_set_interpolant_from_internal(mcsat, mcsat_analyze_final(mcsat, &conflict));
-        conflict_destruct(&conflict);
-      } else {
-        // an assertion, interpolant is !assertion
-        term_t interpolant = variable_db_get_term(mcsat->var_db, mcsat->variable_in_conflict);
-        bool value = trail_get_boolean_value(mcsat->trail, mcsat->variable_in_conflict);
-        if (!value) {
-          interpolant = opposite_term(interpolant);
-        }
-        mcsat_set_interpolant_from_internal(mcsat, interpolant);
-      }
+      mcsat_assumption_conflict_calc_interpolant(mcsat);
+      assert(mcsat->interpolant != NULL_TERM);
     }
     mcsat->status = YICES_STATUS_UNSAT;
     mcsat->variable_in_conflict = variable_null;
@@ -2410,14 +2388,22 @@ void mcsat_analyze_conflicts(mcsat_solver_t* mcsat, uint32_t* restart_resource) 
       mcsat->assumptions_decided_level = -1;
       mcsat_backtrack_to(mcsat, mcsat->trail->decision_level_base, false);
     }
-    delete_ivector(&reason);
     return;
-  } else {
-    assert(plugin->get_conflict);
-    plugin->get_conflict(plugin, &reason);
   }
 
+  // Plugin that's in conflict
+  assert(mcsat->plugin_in_conflict);
+  uint32_t plugin_i = mcsat->plugin_in_conflict->ctx.plugin_id;
+  plugin_t* plugin = mcsat->plugins[plugin_i].plugin;
+
+  // Get the conflict reasons
+  ivector_t reason;
+  init_ivector(&reason, 0);
+  assert(plugin->get_conflict);
+  plugin->get_conflict(plugin, &reason);
+
   // Construct the conflict
+  conflict_t conflict;
   conflict_construct(&conflict, &reason, true, mcsat_evaluator_get(mcsat), mcsat->var_db, mcsat->trail, &mcsat->tm, mcsat->ctx->trace);
   if (trace_enabled(trace, "mcsat::conflict::check")) {
     // Don't check bool conflicts: they are implied by the formula (clauses)
@@ -2433,10 +2419,12 @@ void mcsat_analyze_conflicts(mcsat_solver_t* mcsat, uint32_t* restart_resource) 
   }
 
   // Get the level of the conflict and backtrack to it
-  conflict_level = conflict_get_level(&conflict);
+  uint32_t conflict_level = conflict_get_level(&conflict);
   // Backtrack max(base, assumptions, conflict)
-  backtrack_level = mcsat_compute_backtrack_level(mcsat, conflict_level);
+  uint32_t backtrack_level = mcsat_compute_backtrack_level(mcsat, conflict_level);
   mcsat_backtrack_to(mcsat, backtrack_level, false);
+
+  term_t decision_bound = NULL_TERM;
 
   // Analyze while at least one variable at conflict level
   while (true) {
@@ -2474,13 +2462,13 @@ void mcsat_analyze_conflicts(mcsat_solver_t* mcsat, uint32_t* restart_resource) 
       //   - Only one conflict literal contains the top variable.
       //   * weight increases by replacing decision with propagation (M+1)
       // [backjump-decide]
-      //   - More then one conflict literal contains the top variable.
+      //   - More than one conflict literal contains the top variable.
       //   - Top variable is decision t1 -> v
       //   - Replace with decision t2 -> v where t2 is larger than t1
       //   * weight increases by replacing decision with a heavier decision
-      ivector_t* conflict_top_vars = conflict_get_variables(&conflict);
+      const ivector_t* conflict_top_vars = conflict_get_variables(&conflict);
       assert(conflict_top_vars->size == 1);
-      variable_t top_var = conflict_top_vars->data[0];
+      const variable_t top_var = conflict_top_vars->data[0];
       if (trace_enabled(trace, "mcsat::conflict")) {
         mcsat_trace_printf(trace, "potential UIP:\n");
         variable_db_print_variable(mcsat->var_db, top_var, trace_out(trace));
@@ -2491,13 +2479,13 @@ void mcsat_analyze_conflicts(mcsat_solver_t* mcsat, uint32_t* restart_resource) 
       }
 
       // [backjump-learn]
-      uint32_t top_var_lits = conflict_get_literal_count_of(&conflict, top_var);
+      const uint32_t top_var_lits = conflict_get_literal_count_of(&conflict, top_var);
       if (top_var_lits == 1) {
         (*mcsat->solver_stats.backjump_learn) ++;
         break;
       }
       // [backjump-decide]
-      assignment_type_t top_var_type = trail_get_assignment_type(mcsat->trail, top_var);
+      const assignment_type_t top_var_type = trail_get_assignment_type(mcsat->trail, top_var);
       if (top_var_type == DECISION) {
         // assert(variable_db_get_term(mcsat->var_db, top_var) < conflict_get_max_literal_of(&conflict, top_var));
         decision_bound = variable_db_get_term(mcsat->var_db, top_var);
@@ -2514,7 +2502,7 @@ void mcsat_analyze_conflicts(mcsat_solver_t* mcsat, uint32_t* restart_resource) 
     }
 
     // Current variable
-    var = trail_back(mcsat->trail);
+    const variable_t var = trail_back(mcsat->trail);
     assert(trail_get_assignment_type(mcsat->trail, var) != DECISION);
 
     // Resolve if in the conflict and current level
@@ -2536,7 +2524,7 @@ void mcsat_analyze_conflicts(mcsat_solver_t* mcsat, uint32_t* restart_resource) 
       // Resolve the variable
       ivector_reset(&reason);
       assert(plugin->explain_propagation);
-      substitution = plugin->explain_propagation(plugin, var, &reason);
+      const term_t substitution = plugin->explain_propagation(plugin, var, &reason);
       if (trace_enabled(trace, "mcsat::propagation::check")) {
         if (plugin_i != mcsat->bool_plugin_id) {
           term_t var_term = variable_db_get_term(mcsat->var_db, var);
@@ -2583,7 +2571,7 @@ void mcsat_analyze_conflicts(mcsat_solver_t* mcsat, uint32_t* restart_resource) 
     mcsat_backtrack_to(mcsat, mcsat->trail->decision_level - 1, true);
 
     // Get the literals
-    conflict_disjuncts = conflict_get_literals(&conflict);
+    ivector_t* conflict_disjuncts = conflict_get_literals(&conflict);
 
     if (trace_enabled(trace, "mcsat::conflict")) {
       mcsat_trace_printf(trace, "conflict_disjuncts:\n");
