@@ -109,6 +109,9 @@ ifeq ($(THREAD_SAFE),1)
 endif
 
 
+CFLAGS += $(C_STD)
+
+
 #
 # OS-dependent compilation flags
 # -fPIC: default on Darwin/Cygwin/Mingw (and causes

@@ -780,6 +780,7 @@ ifeq ($(POSIXOS),mingw)
 endif
 
 
+CFLAGS += $(C_STD)
 
 
 #
@@ -1396,6 +1397,7 @@ show-details:
 	@ echo "  LN_S     = $(LN_S)"
 	@ echo "  MKDIR_P  = $(MKDIR_P)"
 	@ echo "  CC       = $(CC)"
+	@ echo "  CFLAGS   = $(CFLAGS)"
 	@ echo "  CPPFLAGS = $(CPPFLAGS)"
 	@ echo "  LIBS     = $(LIBS)"
 	@ echo "  LDFLAGS  = $(LDFLAGS)"

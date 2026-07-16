@@ -161,7 +161,7 @@ sudo apt-get install yices2-dev
 
 To build Yices from the source, you need:
 
-- GCC version 4.0.x or newer (or clang 3.0 or newer)
+- GCC version 4.7.x or newer (or clang 3.1 or newer)
 - gperf version 3.0 or newer
 - the GMP library version 4.1 or newer
 

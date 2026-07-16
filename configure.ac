@@ -117,7 +117,35 @@ else
   esac
 fi
 
-
+dnl
+dnl Check that the C compiler supports -std=gnu11
+dnl ---------------------------------------------
+dnl
+dnl Yices requires C11. We ask for the GNU dialect rather than strict
+dnl -std=c11: strict conformance defines __STRICT_ANSI__, which hides the
+dnl POSIX interfaces used in utils/cputime.c, utils/timeout.c and mt/threads.c.
+dnl
+dnl We check two things: that $CC accepts the flag, and that it actually
+dnl delivers C11. A compiler that accepts -std=gnu11 but reports an older
+dnl __STDC_VERSION__ is rejected. Configure fails if either check fails.
+dnl
+C_STD="-std=gnu11"
+csl_saved_cflags=$CFLAGS
+CFLAGS="$C_STD $CFLAGS"
+AC_MSG_CHECKING([whether $CC supports -std=gnu11])
+AC_COMPILE_IFELSE(
+  [AC_LANG_PROGRAM([[
+#if !defined(__STDC_VERSION__) || __STDC_VERSION__ < 201112L
+#error "C11 is not supported"
+#endif
+_Static_assert(1, "C11 static assertions are available");
+  ]],
+  [[]])],
+  [AC_MSG_RESULT(yes)],
+  [AC_MSG_RESULT(no)
+   AC_MSG_ERROR([*** $CC does not support -std=gnu11. Yices requires a C11 compiler: GCC 4.7 or newer, or Clang 3.1 or newer ***])])
+CFLAGS=$csl_saved_cflags
+AC_SUBST(C_STD)
 
 dnl
 dnl Check whether the C compiler accepts the flag -fno-stack-protector
@@ -147,13 +175,12 @@ else
 fi;
 AC_SUBST(NO_STACK_PROTECTOR)
 
-
 dnl
 dnl Check for endianness
 dnl --------------------
 dnl
 WORDS_BIGENDIAN=""
-AC_C_BIGENDIAN([WORDS_BIGENDIAN=yes],[WORDS_BIGENDIAN=no],[WORDS_BIGENDIAN=yes])
+AC_C_BIGENDIAN([WORDS_BIGENDIAN=yes],[WORDS_BIGENDIAN=no],[WORDS_BIGENDIAN=yes],[WORDS_BIGENDIAN=no])
 AC_SUBST(WORDS_BIGENDIAN)
 
 dnl
@@ -182,7 +209,6 @@ AC_MSG_RESULT([$has_tls])
 CPPFLAGS=$save_cppflags
 LIBS=$save_libs
 ])
-
 
 
 dnl
