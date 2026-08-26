@@ -684,6 +684,10 @@ struct context_s {
   // internalization table
   intern_tbl_t intern;
 
+  // preferred terms, from the non-standard (prefer <term>) command, in input order
+  // - kept as signed terms: MC-SAT resolves them to its own variables at decision time
+  ivector_t prefer_terms;
+
   // preferred decision literals, from the non-standard (prefer <term>) command
   // - in the order the preferences occur in the input, duplicates removed
   // - the core borrows this array, so it must not move during the search

@@ -33,6 +33,7 @@
 #include "mcsat/variable_db.h"
 #include "mcsat/variable_queue.h"
 #include "mcsat/trail.h"
+#include "mcsat/model.h"
 #include "mcsat/conflict.h"
 #include "mcsat/plugin.h"
 #include "mcsat/tracing.h"
@@ -251,6 +252,12 @@ struct mcsat_solver_s {
   /** Variable to decide on first */
   ivector_t top_decision_vars;
 
+  /** Variables hinted by user to decide first */
+  ivector_t user_hint_vars;
+
+  /** Values of variables hinted by the user (only honored for variables in user_hint_vars).  */
+  mcsat_model_t user_hint_values;
+
   /** Variables hinted by the plugins to decide next */
   int_queue_t hinted_decision_vars;
 
@@ -309,6 +316,8 @@ struct mcsat_solver_s {
     statistic_int_t* lemmas;
     // Decisions performed
     statistic_int_t* decisions;
+    // Decisions taken from user hints
+    statistic_int_t* user_decisions;
     // Restarts performed
     statistic_int_t* restarts;
     // Partial restarts performed
@@ -377,6 +386,7 @@ void mcsat_stats_init(mcsat_solver_t* mcsat) {
   mcsat->solver_stats.conflicts = statistics_new_int(&mcsat->stats, "mcsat::conflicts");
   mcsat->solver_stats.avg_conflict_size = statistics_new_avg(&mcsat->stats, "mcsat::avg_conflict_size");
   mcsat->solver_stats.decisions = statistics_new_int(&mcsat->stats, "mcsat::decisions");
+  mcsat->solver_stats.user_decisions = statistics_new_int(&mcsat->stats, "mcsat::user_decisions");
   mcsat->solver_stats.gc_calls = statistics_new_int(&mcsat->stats, "mcsat::gc_calls");
   mcsat->solver_stats.lemmas = statistics_new_int(&mcsat->stats, "mcsat::lemmas");
   mcsat->solver_stats.restarts = statistics_new_int(&mcsat->stats, "mcsat::restarts");
@@ -1005,6 +1015,8 @@ void mcsat_construct(mcsat_solver_t* mcsat, const context_t* ctx) {
 
   // The variable queue
   init_ivector(&mcsat->top_decision_vars, 0);
+  init_ivector(&mcsat->user_hint_vars, 0);
+  mcsat_model_construct(&mcsat->user_hint_values);
   init_int_queue(&mcsat->hinted_decision_vars, 0);
   var_queue_construct(&mcsat->var_queue);
 
@@ -1074,6 +1086,8 @@ void mcsat_destruct(mcsat_solver_t* mcsat) {
   preprocessor_destruct(&mcsat->preprocessor);
   l2o_destruct(&mcsat->l2o);
   delete_ivector(&mcsat->top_decision_vars);
+  delete_ivector(&mcsat->user_hint_vars);
+  mcsat_model_destruct(&mcsat->user_hint_values);
   delete_int_queue(&mcsat->hinted_decision_vars);
   var_queue_destruct(&mcsat->var_queue);
   delete_ivector(&mcsat->plugin_lemmas);
@@ -1454,6 +1468,9 @@ void mcsat_gc(mcsat_solver_t* mcsat, bool mark_and_gc_internal) {
   }
   for (i = 0; i < mcsat->top_decision_vars.size; ++i) {
     gc_info_mark(&gc_vars, mcsat->top_decision_vars.data[i]);
+  }
+  for (i = 0; i < mcsat->user_hint_vars.size; ++i) {
+    gc_info_mark(&gc_vars, mcsat->user_hint_vars.data[i]);
   }
 
   // Mark the trail variables as needed
@@ -2747,6 +2764,98 @@ bool mcsat_decide_var(mcsat_solver_t* mcsat, variable_t var, bool force_decision
 }
 
 /**
+ * Collect the user-supplied decision hints into one list: the (prefer <term>)
+ * preferences first, then the :yices-mcsat-var-order variables.
+ */
+static
+void mcsat_build_user_hints(mcsat_solver_t* mcsat) {
+  int_hset_t seen;
+  mcsat_value_t value;
+
+  // drop the hints from the previous solve
+  for (uint32_t i = 0; i < mcsat->user_hint_vars.size; ++ i) {
+    mcsat_model_unset_value(&mcsat->user_hint_values, mcsat->user_hint_vars.data[i]);
+  }
+  ivector_reset(&mcsat->user_hint_vars);
+
+  const ivector_t* prefs = &mcsat->ctx->prefer_terms;
+  const ivector_t* order = &mcsat->ctx->mcsat_var_order;
+  if (prefs->size == 0 && order->size == 0) {
+    return;
+  }
+
+  init_int_hset(&seen, 0);
+
+  // (prefer <term>): fixes the variable and its value
+  for (uint32_t i = 0; i < prefs->size; ++ i) {
+    const term_t t = prefs->data[i];
+    const variable_t var = variable_db_get_variable_if_exists(mcsat->var_db, unsigned_term(t));
+    if (var == variable_null) continue;   // not part of this problem
+    if (!int_hset_add(&seen, var)) continue;
+    // (prefer t) wants t true, (prefer (not t)) wants t false
+    mcsat_value_construct_bool(&value, is_pos_term(t));
+    mcsat_model_set_value(&mcsat->user_hint_values, var, &value);
+    mcsat_value_destruct(&value);
+    ivector_push(&mcsat->user_hint_vars, var);
+  }
+
+  // :yices-mcsat-var-order: fixes the order only
+  for (uint32_t i = 0; i < order->size; ++ i) {
+    const variable_t var = variable_db_get_variable_if_exists(mcsat->var_db, order->data[i]);
+    if (var == variable_null) continue;
+    if (!int_hset_add(&seen, var)) continue;
+    // no value: this hint only fixes the position
+    ivector_push(&mcsat->user_hint_vars, var);
+  }
+
+  delete_int_hset(&seen);
+}
+
+/**
+ * Return the first hinted variable that is not on the trail yet, seeding the
+ * value it should be decided to when the hint carries one. Returns
+ * variable_null if every hinted variable is assigned.
+ *
+ * The value goes through the trail's cached value, which is what
+ * bool_plugin_decide reads to pick the polarity. It is re-seeded on every
+ * visit rather than once up front: the cache doubles as the phase-saving slot,
+ * so a preference flipped by conflict analysis must be restored the next time
+ * we decide that variable.
+ */
+static
+variable_t mcsat_next_hinted_var(mcsat_solver_t* mcsat) {
+  for (uint32_t i = 0; i < mcsat->user_hint_vars.size; ++ i) {
+    variable_t var = mcsat->user_hint_vars.data[i];
+    if (trail_has_value(mcsat->trail, var)) {
+      continue;
+    }
+
+    const mcsat_value_t* value = NULL;
+    if (mcsat_model_has_value(&mcsat->user_hint_values, var)) {
+      // the hint says which value to decide, whatever its type
+      value = mcsat_model_get_value(&mcsat->user_hint_values, var);
+      trail_set_cached_value(mcsat->trail, var, value);
+      (*mcsat->solver_stats.user_decisions) ++;
+    }
+
+    if (trace_enabled(mcsat->ctx->trace, "mcsat::decide")) {
+      FILE* out = trace_out(mcsat->ctx->trace);
+      fprintf(out, "mcsat_decide(): hinted ");
+      variable_db_print_variable(mcsat->var_db, var, out);
+      if (value != NULL) {
+        fprintf(out, " = ");
+        mcsat_value_print(value, out);
+      }
+      fprintf(out, "\n");
+    }
+
+    return var;
+  }
+
+  return variable_null;
+}
+
+/**
  * Decides a variable using one of the plugins. Returns true if a variable
  * has been decided, or a conflict detected.
  */
@@ -2778,28 +2887,11 @@ bool mcsat_decide(mcsat_solver_t* mcsat) {
       var = variable_null;
     }
 
-    // If there is a fixed order that was passed in, try that
+    // User-supplied hints
     if (var == variable_null) {
-      const ivector_t* order = &mcsat->ctx->mcsat_var_order;
-      if (order->size > 0) {
-        if (trace_enabled(mcsat->ctx->trace, "mcsat::decide")) {
-          FILE* out = trace_out(mcsat->ctx->trace);
-          fprintf(out, "mcsat_decide(): var_order is ");
-          for (uint32_t i = 0; i < order->size; ++ i) {
-            term_print_to_file(out, mcsat->ctx->terms, order->data[i]);
-            fprintf(out, " ");
-          }
-          fprintf(out, "\n");
-        }
-        for (uint32_t i = 0; var == variable_null && i < order->size; ++i) {
-          term_t ovar_term = order->data[i];
-          variable_t ovar = variable_db_get_variable_if_exists(mcsat->var_db, ovar_term);
-          if (ovar == variable_null) continue; // Some variables are not used
-          if (!trail_has_value(mcsat->trail, ovar)) {
-            var = ovar;
-            force_decision = true;
-          }
-        }
+      var = mcsat_next_hinted_var(mcsat);
+      if (var != variable_null) {
+        force_decision = true;
       }
     }
 
@@ -3094,6 +3186,8 @@ void mcsat_solve(mcsat_solver_t* mcsat, const param_t *params, model_t* mdl, uin
 
   uint32_t restart_resource;
   luby_t luby;
+
+  mcsat_build_user_hints(mcsat);
 
   // Make sure we have variables for all the assumptions
   if (n_assumptions > 0) {

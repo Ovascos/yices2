@@ -6500,6 +6500,7 @@ void init_context(context_t *ctx, term_table_t *terms, smt_logic_t logic,
    * Simplification/internalization support
    */
   init_intern_tbl(&ctx->intern, 0, terms);
+  init_ivector(&ctx->prefer_terms, 0);
   init_ivector(&ctx->prefer_lits, 0);
   init_ivector(&ctx->top_eqs, CTX_DEFAULT_VECTOR_SIZE);
   init_ivector(&ctx->top_atoms, CTX_DEFAULT_VECTOR_SIZE);
@@ -6628,6 +6629,7 @@ void delete_context(context_t *ctx) {
   context_delete_mcsat_relaxation(ctx);
 
   delete_intern_tbl(&ctx->intern);
+  delete_ivector(&ctx->prefer_terms);
   delete_ivector(&ctx->prefer_lits);
   delete_ivector(&ctx->top_eqs);
   delete_ivector(&ctx->top_atoms);
@@ -6699,6 +6701,7 @@ void reset_context(context_t *ctx) {
   context_reset_mcsat_relaxation(ctx);
 
   reset_intern_tbl(&ctx->intern);
+  ivector_reset(&ctx->prefer_terms);
   ivector_reset(&ctx->prefer_lits);  // reset_smt_core above already dropped the core's pointer
   ivector_reset(&ctx->top_eqs);
   ivector_reset(&ctx->top_atoms);
@@ -7246,15 +7249,18 @@ void context_set_preferred_terms(context_t *ctx, uint32_t n, const term_t *t) {
   term_t r;
   literal_t l;
 
+  ivector_reset(&ctx->prefer_terms);
   ivector_reset(&ctx->prefer_lits);
 
   if (n == 0) return;
 
-  if (ctx->mcsat != NULL) {
-    // MC-SAT does not use the CDCL core: preferences are not supported yet
-    trace_printf(ctx->trace, 2, "(prefer: ignored %"PRIu32" preferences: not supported by mcsat)\n", n);
-    return;
-  }
+  /*
+   * Both engines start from the terms. MC-SAT has no internalization table:
+   * it resolves the terms to its own variables at decision time, so there's
+   * nothing more to do for it here.
+   */
+  ivector_copy(&ctx->prefer_terms, t, n);
+  if (ctx->mcsat != NULL) return;
 
   dropped = 0;
   merged = 0;
