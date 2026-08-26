@@ -48,6 +48,7 @@
 #include <stdio.h>
 
 #include "utils/int_hash_map.h"
+#include "utils/int_hash_sets.h"
 #include "utils/int_vectors.h"
 #include "utils/ptr_vectors.h"
 #include "utils/string_hash_map.h"
@@ -151,6 +152,7 @@ typedef enum smt2_opcodes {
   SMT2_PUSH,                            // [push <numeral> ]
   SMT2_POP,                             // [pop <numeral> ]
   SMT2_ASSERT,                          // [assert <term> ]
+  SMT2_PREFER,                          // [prefer <term> ]
   SMT2_CHECK_SAT,                       // [check-sat ]
   SMT2_CHECK_SAT_ASSUMING,              // [check-sat-assuming <literals>* ]
   SMT2_CHECK_SAT_ASSUMING_MODEL,        // [check-sat-assuming (<symbol>*) (<term>*)]
@@ -474,6 +476,19 @@ typedef struct smt2_globals_s {
   bool trivially_sat;
   bool frozen;
 
+  /*
+   * Support for the non-standard (prefer <term>) command
+   * - prefer_terms = the preferred terms, in the order they occur in the input
+   * - assertion_subterms = every subterm of the assertions scanned so far,
+   *   stored without sign (i.e., t and (not t) map to the same element)
+   * - scanned_assertions/scanned_named_asserts = how much of 'assertions' and
+   *   of 'named_asserts' has been added to assertion_subterms already.
+   */
+  ivector_t prefer_terms;
+  int_hset_t assertion_subterms;
+  uint32_t scanned_assertions;
+  uint32_t scanned_named_asserts;
+
   ptr_hmap_t term_patterns;
 
 } smt2_globals_t;
@@ -707,6 +722,15 @@ extern void smt2_pop(uint32_t n);
  *   if should be treated specially if support for unsat cores is enabled.
  */
 extern void smt2_assert(term_t t, bool special);
+
+
+/*
+ * Add t to the list of preferred terms (Yices extension)
+ * - t must occur in one of the assertions given so far, otherwise
+ *   an error is reported and the command is ignored
+ * - not supported in incremental mode
+ */
+extern void smt2_prefer(term_t t);
 
 
 /*

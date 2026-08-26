@@ -99,6 +99,7 @@ void push_smt2_token(etk_queue_t *queue, smt2_token_t tk, const char *str, uint3
   case SMT2_TK_ECHO:
   case SMT2_TK_RESET:
   case SMT2_TK_RESET_ASSERTIONS:
+  case SMT2_TK_PREFER:
     etk_queue_push_token(queue, tk, 0, str, len);
     break;
 
@@ -181,6 +182,7 @@ static void pp_smt2_token(yices_pp_t *printer, etoken_t *token) {
   case SMT2_TK_ECHO:
   case SMT2_TK_RESET:
   case SMT2_TK_RESET_ASSERTIONS:
+  case SMT2_TK_PREFER:
     pp_string(printer, token->ptr);
     break;
 

@@ -54,6 +54,7 @@
 #include "model/model_eval.h"
 #include "model/projection.h"
 #include "solvers/bv/dimacs_printer.h"
+#include "terms/term_explorer.h"
 #include "utils/refcount_strings.h"
 #include "utils/timeout.h"
 
@@ -1356,6 +1357,7 @@ static const char * const opcode_string[NUM_SMT2_OPCODES] = {
   "push",                 // SMT2_PUSH
   "pop",                  // SMT2_POP
   "assert",               // SMT2_ASSERT,
+  "prefer",               // SMT2_PREFER,
   "check-sat",            // SMT2_CHECK_SAT,
   "check-sat-assuming",   // SMT2_CHECK_SAT_ASSUMING,
   "check-sat-assuming-model", // SMT2_CHECK_SAT_ASSUMING_MODEL
@@ -4795,6 +4797,11 @@ static void init_smt2_globals(smt2_globals_t *g) {
   g->trivially_sat = false;
   g->frozen = false;
 
+  init_ivector(&g->prefer_terms, 0);
+  init_int_hset(&g->assertion_subterms, 0);
+  g->scanned_assertions = 0;
+  g->scanned_named_asserts = 0;
+
   init_smt2_pattern_map(&g->term_patterns);
 }
 
@@ -4825,6 +4832,8 @@ static void delete_smt2_globals(smt2_globals_t *g) {
     delete_ef_client(&g->ef_client);
   }
   delete_ivector(&g->assertions);
+  delete_ivector(&g->prefer_terms);
+  delete_int_hset(&g->assertion_subterms);
   delete_ivector(&g->var_order);
 
   delete_smt2_pattern_map(&g->term_patterns);
@@ -6806,6 +6815,124 @@ void smt2_assert(term_t t, bool special) {
 }
 
 
+/*
+ * SUPPORT FOR THE (prefer <term>) COMMAND
+ */
+
+/*
+ * Add every subterm of t to set
+ * - the terms are stored without sign, so t and (not t) give the same
+ *   element: a preference is checked against the atom, not the literal.
+ * - v is used as the traversal worklist. It must be empty on entry and
+ *   is empty again on exit.
+ * - int_hset_add returns false if the term is already in the set, which
+ *   is what keeps the walk linear in the size of the DAG.
+ */
+static void collect_subterms(term_table_t *terms, int_hset_t *set, ivector_t *v, term_t t) {
+  term_t x, u;
+  uint32_t i, n;
+
+  assert(v->size == 0);
+
+  x = unsigned_term(t);
+  if (int_hset_add(set, x)) {
+    ivector_push(v, x);
+  }
+
+  while (v->size > 0) {
+    x = ivector_pop2(v);
+    n = term_num_children(terms, x);
+    for (i=0; i<n; i++) {
+      u = term_ith_subterm(terms, x, i);
+      if (u == NULL_TERM) continue;  // constant monomial of a sum: nothing to visit
+      u = unsigned_term(u);
+      if (int_hset_add(set, u)) {
+        ivector_push(v, u);
+      }
+    }
+  }
+}
+
+
+/*
+ * Check whether t occurs in one of the assertions
+ * - g->assertion_subterms is filled in on demand: only the assertions
+ *   that were added since the previous call are scanned.
+ * - named assertions don't go to g->assertions when unsat cores are
+ *   enabled, so we must scan g->named_asserts too.
+ */
+static bool term_occurs_in_assertions(smt2_globals_t *g, term_t t) {
+  term_table_t *terms;
+  ivector_t work;
+  uint32_t i, n;
+
+  terms = __yices_globals.terms;
+  init_ivector(&work, 0);
+
+  n = g->assertions.size;
+  for (i=g->scanned_assertions; i<n; i++) {
+    collect_subterms(terms, &g->assertion_subterms, &work, g->assertions.data[i]);
+  }
+  g->scanned_assertions = n;
+
+  n = g->named_asserts.top;
+  for (i=g->scanned_named_asserts; i<n; i++) {
+    collect_subterms(terms, &g->assertion_subterms, &work, g->named_asserts.data[i].term);
+  }
+  g->scanned_named_asserts = n;
+
+  delete_ivector(&work);
+
+  return int_hset_member(&g->assertion_subterms, unsigned_term(t));
+}
+
+
+/*
+ * Forget all the preferences collected so far
+ * - called when the assertions are dropped, since the terms we stored
+ *   may not even exist anymore afterwards
+ */
+static void reset_prefer_data(smt2_globals_t *g) {
+  ivector_reset(&g->prefer_terms);
+  int_hset_reset(&g->assertion_subterms);
+  g->scanned_assertions = 0;
+  g->scanned_named_asserts = 0;
+}
+
+
+/*
+ * Record a preference for t (Yices extension)
+ * t must be a Boolean term that occurs in one of the assertions
+ */
+void smt2_prefer(term_t t) {
+    smt2_globals_t* g = &__smt2_globals;
+
+  g->stats.num_commands ++;
+
+  if (check_logic()) {
+    if (!g->benchmark_mode) {
+      /*
+       * Incremental mode is not yet supported.
+       * In incremental mode, the assertions are given to the context
+       * as they are read and nothing keeps them, so we can't check
+       * that t occurs in one of them.
+       */
+      print_error("prefer is not supported in incremental mode");
+      done = true;
+    } else if (!yices_term_is_bool(t)) {
+      print_error("type error in prefer: Boolean term required");
+    } else if (g->frozen) {
+      print_error("prefer is not allowed after (check-sat) in non-incremental mode");
+    } else if (!term_occurs_in_assertions(g, t)) {
+      print_error("prefer term does not occur in any assertion");
+    } else {
+      ivector_push(&g->prefer_terms, t);
+      report_success();
+    }
+  }
+}
+
+
 
 #ifdef THREAD_SAFE
 
@@ -7267,6 +7394,8 @@ void smt2_reset_assertions(void) {
 
       reset_named_term_stack(&g->named_bools);
       reset_named_term_stack(&g->named_asserts);
+
+      reset_prefer_data(g);
 
       reset_string_vector(&g->model_term_names);
 

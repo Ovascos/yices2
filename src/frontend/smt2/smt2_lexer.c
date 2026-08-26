@@ -87,6 +87,7 @@ static const char * const smt2_token_string[NUM_SMT2_TOKENS] = {
   "set-option",            // SMT2_TK_SET_OPTION
   "reset",                 // SMT2_TK_RESET
   "reset-assertions",      // SMT2_TK_RESET_ASSERTIONS
+  "prefer",                // SMT2_TK_PREFER
 
   "<bad-string>",          // SMT2_TK_INVALID_STRING
   "<invalid-numeral>",     // SMT2_TK_INVALID_NUMERAL

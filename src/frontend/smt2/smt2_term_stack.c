@@ -1216,6 +1216,24 @@ static void eval_smt2_assert(tstack_t *stack, stack_elem_t *f, uint32_t n) {
 
 
 /*
+ * [prefer <term> ]
+ */
+static void check_smt2_prefer(tstack_t *stack, stack_elem_t *f, uint32_t n) {
+  check_op(stack, SMT2_PREFER);
+  check_size(stack, n == 1);
+}
+
+static void eval_smt2_prefer(tstack_t *stack, stack_elem_t *f, uint32_t n) {
+  term_t t;
+
+  t = get_term(stack, f);
+  smt2_prefer(t);
+  tstack_pop_frame(stack);
+  no_result(stack);
+}
+
+
+/*
  * [check-sat ]
  */
 static void check_smt2_check_sat(tstack_t *stack, stack_elem_t *f, uint32_t n) {
@@ -2708,6 +2726,7 @@ void init_smt2_tstack(tstack_t *stack) {
   tstack_add_op(stack, SMT2_PUSH, false, eval_smt2_push, check_smt2_push);
   tstack_add_op(stack, SMT2_POP, false, eval_smt2_pop, check_smt2_pop);
   tstack_add_op(stack, SMT2_ASSERT, false, eval_smt2_assert, check_smt2_assert);
+  tstack_add_op(stack, SMT2_PREFER, false, eval_smt2_prefer, check_smt2_prefer);
   tstack_add_op(stack, SMT2_CHECK_SAT, false, eval_smt2_check_sat, check_smt2_check_sat);
   tstack_add_op(stack, SMT2_CHECK_SAT_ASSUMING, false, eval_smt2_check_sat_assuming, check_smt2_check_sat_assuming);
   tstack_add_op(stack, SMT2_CHECK_SAT_ASSUMING_MODEL, false, eval_smt2_check_sat_assuming_model, check_smt2_check_sat_assuming_model);

@@ -230,6 +230,12 @@ static int32_t smt2_parse(parser_t *parser, state_t start) {
       state = t0;
       goto loop;
 
+    case prefer_next_push_r0_goto_t0:
+      tstack_push_op(tstack, SMT2_PREFER, &loc);
+      parser_push_state(stack, r0);
+      state = t0;
+      goto loop;
+
     case declare_sort_next_goto_c8:
       tstack_push_op(tstack, SMT2_DECLARE_SORT, &loc);
       state = c8;

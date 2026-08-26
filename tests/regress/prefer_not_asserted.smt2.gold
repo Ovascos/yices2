@@ -1,0 +1,3 @@
+(error "prefer term does not occur in any assertion")
+(error "prefer term does not occur in any assertion")
+sat

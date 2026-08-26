@@ -1,0 +1,2 @@
+(error "type error in prefer: Boolean term required")
+sat

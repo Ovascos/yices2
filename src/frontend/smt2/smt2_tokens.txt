@@ -45,3 +45,4 @@ set-option,                   SMT2_TK_SET_OPTION
 echo,                         SMT2_TK_ECHO
 reset,                        SMT2_TK_RESET
 reset-assertions,             SMT2_TK_RESET_ASSERTIONS
+prefer,                       SMT2_TK_PREFER

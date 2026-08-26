@@ -86,6 +86,7 @@ enum smt2_token {
   SMT2_TK_ECHO,
   SMT2_TK_RESET,
   SMT2_TK_RESET_ASSERTIONS,
+  SMT2_TK_PREFER,
 
   // Errors
   SMT2_TK_INVALID_STRING,
@@ -131,6 +132,7 @@ Grammar (SMT-LIB 2.5, June 28 2015)
             | ( reset )
             | ( reset-assertions )
             | ( check-sat-assuming-model ( <variables>* ) ( <terms>* ))
+            | ( prefer <term> )
             | EOS
 
 
@@ -236,6 +238,8 @@ Grammar (SMT-LIB 2.5, June 28 2015)
 
 The EOS part in <command> is non standard but it makes sense to allow it.
 
+The prefer command is a Yices extension. (prefer <term>) states a preference
+for <term> to be true. It is accepted only if <term> occurs in an assertion.
 
 
 We rewrite  the rules  for <term> and  <sort> to remove  the ambiguity
@@ -313,6 +317,7 @@ c0           (                  c1
              EOS                DONE
 
 c1           assert             c7
+             prefer             c7
              check-sat          c2
              check-sat-assuming c16
              check-sat-assuming-model c17
@@ -358,7 +363,7 @@ c6           <keyword>          c6a
 c6a          )                  DONE
              [attribute-value]  c2
 
-; assert
+; assert and prefer
 c7           [term]             c2
 
 ; declare-sort
@@ -613,6 +618,7 @@ c0           (                  next; goto c1
              EOS                return
 
 c1           assert         next; push r0; goto t0
+             prefer         next; push r0; goto t0
              check-sat          next; goto r0
              check-sat-assuming next; goto c16
              check-sat-assuming-model   next; goto c17

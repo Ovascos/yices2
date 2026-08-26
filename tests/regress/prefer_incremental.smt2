@@ -1,0 +1,7 @@
+(set-logic QF_LRA)
+(declare-fun x () Real)
+(declare-fun a () Bool)
+(assert (= a (<= x 0)))
+(prefer a)
+(check-sat)
+(exit)
