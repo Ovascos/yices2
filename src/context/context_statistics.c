@@ -48,6 +48,7 @@ static void show_stats(FILE *f, dpll_stats_t *stat) {
   fprintf(f, " remove irrelevant       : %"PRIu32"\n", stat->remove_calls);
   fprintf(f, " decisions               : %"PRIu64"\n", stat->decisions);
   fprintf(f, " random decisions        : %"PRIu64"\n", stat->random_decisions);
+  fprintf(f, " prefer decisions        : %"PRIu64"\n", stat->prefer_decisions);
   fprintf(f, " propagations            : %"PRIu64"\n", stat->propagations);
   fprintf(f, " conflicts               : %"PRIu64"\n", stat->conflicts);
   fprintf(f, " theory propagations     : %"PRIu32"\n", stat->th_props);

@@ -110,6 +110,11 @@ static void trace_reduce(smt_core_t *core, uint64_t deleted) {
  */
 static void trace_done(smt_core_t *core) {
   trace_stats(core, "done:", 1);
+  // TODO this is not the best place to print this, maybe add it to trace_stats?
+  if (core->num_prefers > 0) {
+    trace_printf(core->trace, 1, "(prefer: %"PRIu64" of %"PRIu64" decisions taken from %"PRIu32" preferences)\n",
+                 core->stats.prefer_decisions, core->stats.decisions, core->num_prefers);
+  }
   trace_newline(core->trace, 1);
 }
 
@@ -195,8 +200,12 @@ static void search(smt_core_t *core, uint32_t conflict_bound, uint64_t *reduce_t
       }
     }
 
-    // decision
-    l = select_unassigned_literal(core);
+    // decision: the (prefer ...) hints come first
+    l = next_preferred_literal(core);
+    if (l == null_literal) {
+      // if no hint left, call regular function
+      l = select_unassigned_literal(core);
+    }
     if (l == null_literal) {
       // all variables assigned: Call final_check
       smt_final_check(core);
@@ -238,8 +247,12 @@ static void luby_search(smt_core_t *core, uint32_t conflict_bound, uint64_t *red
       }
     }
 
-    // decision
-    l = select_unassigned_literal(core);
+    // decision: the (prefer ...) hints come first
+    l = next_preferred_literal(core);
+    if (l == null_literal) {
+      // if no hint left, call regular function
+      l = select_unassigned_literal(core);
+    }
     if (l == null_literal) {
       // all variables assigned: Call final_check
       smt_final_check(core);
@@ -286,14 +299,20 @@ static void special_search(smt_core_t *core, uint32_t conflict_bound, uint64_t *
       }
     }
 
-    // decision
-    l = select_unassigned_literal(core);
+    // first get the next preferred literal
+    l = next_preferred_literal(core);
+    if (l == null_literal) {
+      // no preferred literal next, use regular literal selection with branching heuristic
+      l = select_unassigned_literal(core);
+      if (l != null_literal) {
+        // apply the branching heuristic
+        l = branch(core, l);
+      }
+    }
     if (l == null_literal) {
       // all variables assigned: call final check
       smt_final_check(core);
     } else {
-      // apply the branching heuristic
-      l = branch(core, l);
       // propagation
       decide_literal(core, l);
       smt_process(core);
@@ -473,6 +492,7 @@ static void context_set_search_parameters(context_t *ctx, const param_t *params)
    * Set core parameters
    */
   core = ctx->core;
+  smt_core_set_preferences(core, ctx->prefer_lits.size, ctx->prefer_lits.data);
   set_randomness(core, params->randomness);
   set_random_seed(core, params->random_seed);
   set_var_decay_factor(core, params->var_decay);

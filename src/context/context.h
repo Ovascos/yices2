@@ -187,6 +187,19 @@ extern int32_t context_internalize(context_t *ctx, term_t t);
 
 
 /*
+ * Set the preferred decision literals from the Boolean terms t[0 ... n-1]
+ * - t[0] has the highest priority
+ * - must be called after the assertions have been internalized and before
+ *   check_context: the terms are looked up in the internalization table,
+ *   nothing is created.
+ * - terms that did not survive preprocessing, and terms already fixed at
+ *   the base level, are dropped. Duplicate literals are removed.
+ * - has no effect when the context uses MC-SAT.
+ */
+extern void context_set_preferred_terms(context_t *ctx, uint32_t n, const term_t *t);
+
+
+/*
  * Build an assumption for Boolean term t:
  * - this converts t to a literal l in context ctx
  *   then create an indicator variable x in the core

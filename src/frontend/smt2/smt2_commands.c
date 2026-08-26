@@ -3190,6 +3190,12 @@ static void check_delayed_assertions(smt2_globals_t *g, bool report) {
         return;
       }
 
+      /*
+       * The assertions are internalized now, so the (prefer ...) terms
+       * can be mapped to decision literals.
+       */
+      context_set_preferred_terms(g->ctx, g->prefer_terms.size, g->prefer_terms.data);
+
       if (g->delegate != NULL && g->logic_code == QF_BV) {
         /*
          * Special case: QF_BV with delegate
@@ -3334,6 +3340,12 @@ static void delayed_assertions_unsat_core(smt2_globals_t *g) {
       done = true;
       return;
     }
+
+    /*
+     * The assertions are internalized now, so the (prefer ...) terms
+     * can be mapped to decision literals.
+     */
+    context_set_preferred_terms(g->ctx, g->prefer_terms.size, g->prefer_terms.data);
     init_search_parameters(g);
     if (g->random_seed != 0) {
       g->parameters.random_seed = g->random_seed;
@@ -3377,6 +3389,12 @@ static void check_delayed_assertions_assuming(smt2_globals_t *g, uint32_t n, sig
         done = true;
         return;
       }
+
+      /*
+       * The assertions are internalized now, so the (prefer ...) terms
+       * can be mapped to decision literals.
+       */
+      context_set_preferred_terms(g->ctx, g->prefer_terms.size, g->prefer_terms.data);
       init_search_parameters(g);
       if (g->random_seed != 0) {
         g->parameters.random_seed = g->random_seed;
@@ -3415,6 +3433,12 @@ static void check_delayed_assertions_assuming_model(smt2_globals_t *g, uint32_t 
       done = true;
       return;
     }
+
+    /*
+     * The assertions are internalized now, so the (prefer ...) terms
+     * can be mapped to decision literals.
+     */
+    context_set_preferred_terms(g->ctx, g->prefer_terms.size, g->prefer_terms.data);
     init_search_parameters(g);
     if (g->random_seed != 0) {
       g->parameters.random_seed = g->random_seed;

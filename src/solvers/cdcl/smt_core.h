@@ -784,6 +784,7 @@ typedef struct dpll_stats_s {
 
   uint64_t decisions;        // number of decisions
   uint64_t random_decisions; // number of random decisions
+  uint64_t prefer_decisions; // number of decisions taken from the preference list
   uint64_t propagations;     // number of boolean propagations
   uint64_t conflicts;        // number of conflicts/backtrackings
 
@@ -1002,6 +1003,10 @@ typedef struct smt_core_s {
   uint32_t assumption_index;
   const literal_t *assumptions;
   literal_t bad_assumption;
+
+  /* Preferred decision literals: borrowed pointer, owned by the context */
+  uint32_t num_prefers;
+  const literal_t *prefers;
 
   /* Auxiliary buffers for conflict resolution */
   ivector_t buffer;
@@ -1937,6 +1942,30 @@ extern void smt_clear(smt_core_t *s);
  */
 extern void smt_clear_unsat(smt_core_t *s);
 
+
+
+/****************************
+ *  PREFERRED DECISIONS     *
+ ***************************/
+
+/*
+ * Set the list of preferred decision literals
+ * - a must remain valid for the whole search: the core keeps the pointer,
+ *   it does not copy the array (same convention as the assumptions)
+ * - n = number of literals in a
+ * - a[0] has the highest priority
+ */
+extern void smt_core_set_preferences(smt_core_t *s, uint32_t n, const literal_t *a);
+
+
+/*
+ * Next preferred decision literal:
+ * - scan the preference list in order and return the first literal that
+ *   is not assigned (i.e., neither it nor its negation is true)
+ * - return null_literal if all preferred literals are assigned or if
+ *   there are no preferences
+ */
+extern literal_t next_preferred_literal(smt_core_t *s);
 
 
 /*********************************

@@ -6500,6 +6500,7 @@ void init_context(context_t *ctx, term_table_t *terms, smt_logic_t logic,
    * Simplification/internalization support
    */
   init_intern_tbl(&ctx->intern, 0, terms);
+  init_ivector(&ctx->prefer_lits, 0);
   init_ivector(&ctx->top_eqs, CTX_DEFAULT_VECTOR_SIZE);
   init_ivector(&ctx->top_atoms, CTX_DEFAULT_VECTOR_SIZE);
   init_ivector(&ctx->top_formulas, CTX_DEFAULT_VECTOR_SIZE);
@@ -6627,6 +6628,7 @@ void delete_context(context_t *ctx) {
   context_delete_mcsat_relaxation(ctx);
 
   delete_intern_tbl(&ctx->intern);
+  delete_ivector(&ctx->prefer_lits);
   delete_ivector(&ctx->top_eqs);
   delete_ivector(&ctx->top_atoms);
   delete_ivector(&ctx->top_formulas);
@@ -6697,6 +6699,7 @@ void reset_context(context_t *ctx) {
   context_reset_mcsat_relaxation(ctx);
 
   reset_intern_tbl(&ctx->intern);
+  ivector_reset(&ctx->prefer_lits);  // reset_smt_core above already dropped the core's pointer
   ivector_reset(&ctx->top_eqs);
   ivector_reset(&ctx->top_atoms);
   ivector_reset(&ctx->top_formulas);
@@ -7218,6 +7221,74 @@ int32_t context_internalize(context_t *ctx, term_t t) {
   }
 
   return l;
+}
+
+
+/*
+ * Set the preferred decision literals from the Boolean terms t[0 ... n-1]
+ * - this must be called after the assertions have been internalized: it
+ *   looks the terms up in the internalization table but never creates
+ *   anything, so a term that preprocessing removed is simply dropped.
+ * - a term is skipped if
+ *   1) its class has no solver object (the term did not survive
+ *      preprocessing: nothing to decide on), or
+ *   2) it is already fixed to true or false at the base level.
+ * - two preferred terms may resolve to the same literal (e.g., after a
+ *   substitution b := <formula>), so duplicates are removed. The first
+ *   occurrence wins: the input order is what ranks the preferences.
+ *
+ * The core borrows ctx->prefer_lits, so this must run before
+ * smt_core_set_preferences and the vector must not change afterwards.
+ */
+void context_set_preferred_terms(context_t *ctx, uint32_t n, const term_t *t) {
+  int_hset_t seen;
+  uint32_t i, polarity, dropped, merged;
+  term_t r;
+  literal_t l;
+
+  ivector_reset(&ctx->prefer_lits);
+
+  if (n == 0) return;
+
+  if (ctx->mcsat != NULL) {
+    // MC-SAT does not use the CDCL core: preferences are not supported yet
+    trace_printf(ctx->trace, 2, "(prefer: ignored %"PRIu32" preferences: not supported by mcsat)\n", n);
+    return;
+  }
+
+  dropped = 0;
+  merged = 0;
+  init_int_hset(&seen, 0);
+
+  for (i=0; i<n; i++) {
+    r = intern_tbl_get_root(&ctx->intern, t[i]);
+    polarity = polarity_of(r);
+    r = unsigned_term(r);
+
+    if (! intern_tbl_root_is_mapped(&ctx->intern, r)) {
+      // eliminated by preprocessing
+      dropped ++;
+      continue;
+    }
+
+    l = translate_code_to_literal(ctx, intern_tbl_map_of_root(&ctx->intern, r)) ^ polarity;
+    if (l == true_literal || l == false_literal) {
+      // already fixed at the base level
+      dropped ++;
+      continue;
+    }
+
+    if (! int_hset_add(&seen, l)) {
+      merged ++;
+      continue;
+    }
+    ivector_push(&ctx->prefer_lits, l);
+  }
+
+  delete_int_hset(&seen);
+
+  trace_printf(ctx->trace, 2, "(prefer: %"PRIu32" literals, %"PRIu32" dropped, %"PRIu32" merged)\n",
+               ctx->prefer_lits.size, dropped, merged);
 }
 
 

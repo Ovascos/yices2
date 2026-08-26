@@ -684,6 +684,11 @@ struct context_s {
   // internalization table
   intern_tbl_t intern;
 
+  // preferred decision literals, from the non-standard (prefer <term>) command
+  // - in the order the preferences occur in the input, duplicates removed
+  // - the core borrows this array, so it must not move during the search
+  ivector_t prefer_lits;
+
   // result of flattening and simplification
   ivector_t top_eqs;
   ivector_t top_atoms;

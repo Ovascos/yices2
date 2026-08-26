@@ -1557,6 +1557,10 @@ void init_smt_core(smt_core_t *s, uint32_t n, void *th,
   s->assumptions = NULL;
   s->bad_assumption = null_literal;
 
+  // preferred decision literals
+  s->num_prefers = 0;
+  s->prefers = NULL;
+
   // clause database: all empty
   s->problem_clauses = new_clause_vector(DEF_CLAUSE_VECTOR_SIZE);
   s->learned_clauses = new_clause_vector(DEF_CLAUSE_VECTOR_SIZE);
@@ -1706,6 +1710,10 @@ void reset_smt_core(smt_core_t *s) {
   s->assumption_index = 0;
   s->assumptions = NULL;
   s->bad_assumption = null_literal;
+
+  // preferred decision literals
+  s->num_prefers = 0;
+  s->prefers = NULL;
 
   // delete the clauses
   cl = s->problem_clauses;
@@ -3667,6 +3675,46 @@ static void resolve_conflict(smt_core_t *s) {
 }
 
 
+
+
+/****************************
+ *  PREFERRED DECISIONS     *
+ ***************************/
+
+/*
+ * Set the preference list: the array a is not copied (cf. the assumptions)
+ */
+void smt_core_set_preferences(smt_core_t *s, uint32_t n, const literal_t *a) {
+  s->num_prefers = n;
+  s->prefers = a;
+}
+
+
+/*
+ * Next preferred decision literal:
+ * - scan the preference list in order and return the first literal that
+ *   is not assigned. A literal whose negation has been assigned is skipped:
+ *   preferences are hints, not constraints, so we just move on.
+ * - return null_literal if all preferred literals are assigned
+ *
+ * Every literal returned here is decided by the caller, so we count the
+ * decision at this point.
+ */
+literal_t next_preferred_literal(smt_core_t *s) {
+  uint32_t i, n;
+  literal_t l;
+
+  n = s->num_prefers;
+  for (i=0; i<n; i++) {
+    l = s->prefers[i];
+    if (literal_is_unassigned(s, l)) {
+      s->stats.prefer_decisions ++;
+      return l;
+    }
+  }
+
+  return null_literal;
+}
 
 
 /*********************************
@@ -6095,6 +6143,7 @@ void start_search(smt_core_t *s, uint32_t n, const literal_t *a) {
   s->stats.reduce_calls = 0;
   s->stats.decisions = 0;
   s->stats.random_decisions = 0;
+  s->stats.prefer_decisions = 0;
   s->stats.conflicts = 0;
   s->simplify_bottom = 0;
   s->simplify_props = 0;
