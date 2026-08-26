@@ -1,0 +1,31 @@
+; A preference fixes the value, not just the decision order. The two
+; activation literals have the shape used by the motivating benchmark
+;   (= act (<= c expr))  plus  (or (not act) ...) / (or act ...)
+; and are independent, so every combination of polarities is reachable.
+; (or p q) is only there to defeat the trivially-satisfiable shortcut,
+; which returns the default model without entering the solver at all.
+(set-logic QF_LRA)
+(declare-fun x1 () Real)
+(declare-fun x2 () Real)
+(declare-fun n1 () Real)
+(declare-fun n1_act () Bool)
+(declare-fun n2 () Real)
+(declare-fun n2_act () Bool)
+(declare-fun p () Bool)
+(declare-fun q () Bool)
+(assert (= n1_act (<= 3 x1)))
+(assert (or (not n1_act) (= n1 x1)))
+(assert (or n1_act (= 0 n1)))
+(assert (= n2_act (<= 5 x2)))
+(assert (or (not n2_act) (= n2 x2)))
+(assert (or n2_act (= 0 n2)))
+(assert (>= x1 (- 10)))
+(assert (<= x1 10))
+(assert (>= x2 (- 10)))
+(assert (<= x2 10))
+(assert (or p q))
+(prefer n1_act)
+(prefer (not n2_act))
+(check-sat)
+(get-value (n1_act n2_act))
+(exit)
