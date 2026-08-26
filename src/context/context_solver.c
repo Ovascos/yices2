@@ -110,11 +110,6 @@ static void trace_reduce(smt_core_t *core, uint64_t deleted) {
  */
 static void trace_done(smt_core_t *core) {
   trace_stats(core, "done:", 1);
-  // TODO this is not the best place to print this, maybe add it to trace_stats?
-  if (core->num_prefers > 0) {
-    trace_printf(core->trace, 1, "(prefer: %"PRIu64" of %"PRIu64" decisions taken from %"PRIu32" preferences)\n",
-                 core->stats.prefer_decisions, core->stats.decisions, core->num_prefers);
-  }
   trace_newline(core->trace, 1);
 }
 
