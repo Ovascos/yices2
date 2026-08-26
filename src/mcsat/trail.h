@@ -269,6 +269,23 @@ void trail_set_cached_value(mcsat_trail_t* trail, variable_t var, const mcsat_va
   }
 }
 
+/**
+ * Set a user-supplied decision hint for var.
+ *
+ * Unlike trail_set_cached_value, this also writes the target cache, which
+ * trail_get_cached_value and trail_get_cached_candidates rank above the model
+ * cache. Without it a hint would be silently overridden as soon as
+ * trail_update_extra_cache recorded a target phase for the variable: a
+ * preference is the user's, and it outranks the solver's phase heuristics.
+ */
+static inline
+void trail_set_hint_value(mcsat_trail_t* trail, variable_t var, const mcsat_value_t* value) {
+  if (!trail_has_value(trail, var)) {
+    mcsat_model_set_value(&trail->target_cache, var, value);
+    mcsat_model_set_value(&trail->model, var, value);
+  }
+}
+
 /** Add a new decision x -> value */
 void trail_add_decision(mcsat_trail_t* trail, variable_t x, const mcsat_value_t* value, uint32_t id);
 

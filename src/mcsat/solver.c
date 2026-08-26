@@ -2834,7 +2834,7 @@ variable_t mcsat_next_hinted_var(mcsat_solver_t* mcsat) {
     if (mcsat_model_has_value(&mcsat->user_hint_values, var)) {
       // the hint says which value to decide, whatever its type
       value = mcsat_model_get_value(&mcsat->user_hint_values, var);
-      trail_set_cached_value(mcsat->trail, var, value);
+      trail_set_hint_value(mcsat->trail, var, value);
       (*mcsat->solver_stats.user_decisions) ++;
     }
 
