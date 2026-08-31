@@ -248,7 +248,6 @@ void trail_add_propagation(mcsat_trail_t* trail, variable_t x, const mcsat_value
   ivector_push(&trail->elements, x);
 }
 
-
 void trail_pop_propagation(mcsat_trail_t* trail) {
   // Undo the value with the addition of decision unmark
   const variable_t x = ivector_last(&trail->elements);
