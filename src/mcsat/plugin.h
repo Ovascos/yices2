@@ -42,7 +42,9 @@ typedef enum {
   /** Each time a conflict is encountered */
   MCSAT_SOLVER_CONFLICT,
   /** Each time we do a user pop, before garbage collection */
-  MCSAT_SOLVER_POP
+  MCSAT_SOLVER_POP,
+  /** Each time propagation is done and the trail is consistent */
+  MCSAT_SOLVER_PROP_DONE
 } plugin_notify_kind_t;
 
 /**
