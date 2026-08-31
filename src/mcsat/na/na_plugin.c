@@ -1901,29 +1901,6 @@ void na_plugin_gc_sweep(plugin_t* plugin, const gc_info_t* gc_vars) {
 }
 
 static
-void na_plugin_event_notify(plugin_t* plugin, plugin_notify_kind_t kind) {
-  na_plugin_t* na = (na_plugin_t*) plugin;
-  (void)na;
-
-  switch (kind) {
-  case MCSAT_SOLVER_START:
-    // Re-initialize the heuristics
-    break;
-  case MCSAT_SOLVER_RESTART:
-    // Check if clause compaction needed
-    break;
-  case MCSAT_SOLVER_CONFLICT:
-    // Decay the scores each conflict
-    break;
-  case MCSAT_SOLVER_POP:
-    // Not much to do
-    break;
-  default:
-    assert(false);
-  }
-}
-
-static
 void na_plugin_new_lemma_notify(plugin_t* plugin, ivector_t* lemma, trail_token_t* prop) {
   na_plugin_t* na = (na_plugin_t*) plugin;
 
@@ -2191,7 +2168,7 @@ plugin_t* na_plugin_allocator(void) {
   plugin->plugin_interface.destruct            = na_plugin_destruct;
   plugin->plugin_interface.new_term_notify     = na_plugin_new_term_notify;
   plugin->plugin_interface.new_lemma_notify    = na_plugin_new_lemma_notify;
-  plugin->plugin_interface.event_notify        = na_plugin_event_notify;
+  plugin->plugin_interface.event_notify        = NULL;
   plugin->plugin_interface.propagate           = na_plugin_propagate;
   plugin->plugin_interface.decide              = na_plugin_decide;
   plugin->plugin_interface.decide_assignment   = na_plugin_decide_assignment;
