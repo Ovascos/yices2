@@ -1720,6 +1720,12 @@ bool mcsat_propagate(mcsat_solver_t* mcsat, bool run_learning) {
     }
   } while (someone_propagated && mcsat_is_consistent(mcsat));
 
+  // Propagation is done. If we're still consistent the trail is fully
+  // propagated: notify the plugins so they can check their state.
+  if (mcsat_is_consistent(mcsat)) {
+    mcsat_notify_plugins(mcsat, MCSAT_SOLVER_PROP_DONE);
+  }
+
   return someone_propagated;
 }
 
