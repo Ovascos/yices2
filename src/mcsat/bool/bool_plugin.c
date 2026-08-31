@@ -1025,6 +1025,8 @@ void bool_plugin_event_notify(plugin_t* plugin, plugin_notify_kind_t kind) {
     // removed through garbage collection
     bool_plugin_remove_stale_clauses(bp);
     break;
+  case MCSAT_SOLVER_PROP_DONE:
+    break;
   default:
     assert(false);
   }
