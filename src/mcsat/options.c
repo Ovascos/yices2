@@ -18,8 +18,6 @@
 
 #include "options.h"
 
-#include <stddef.h>
-
 extern void init_mcsat_options(mcsat_options_t *opts) {
   opts->na_nlsat = false;
   opts->na_mgcd = false;
@@ -30,5 +28,5 @@ extern void init_mcsat_options(mcsat_options_t *opts) {
   opts->model_interpolation = false;
   opts->partial_restart = false;
   opts->l2o = false;
+  opts->backtrack = MCSAT_BACKTRACK_NCB;
 }
-

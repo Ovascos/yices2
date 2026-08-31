@@ -19,15 +19,26 @@
 #ifndef MCSAT_OPTIONS_H_
 #define MCSAT_OPTIONS_H_
 
-#include "utils/int_vectors.h"
-
 #include <stdbool.h>
 #include <stdint.h>
 
 /**
+ * Backtracking strategy of the mcsat search.
+ */
+typedef enum {
+  /** Non-chronological backtracking (backjumping) */
+  MCSAT_BACKTRACK_NCB,
+  /** Restricted-scope chronological backtracking */
+  MCSAT_BACKTRACK_RSCB,
+} mcsat_backtrack_t;
+
+// keep in sync with mcsat_backtrack_modes in frontend/common/parameters.c
+#define NUM_MCSAT_BACKTRACK_MODES 2
+
+/**
  * Options for the mcsat solver.
  */
-typedef struct mcsat_options_s {
+typedef struct {
   bool na_mgcd;
   bool na_nlsat;
   bool na_bound;
@@ -37,6 +48,7 @@ typedef struct mcsat_options_s {
   bool model_interpolation;
   bool partial_restart;
   bool l2o;
+  mcsat_backtrack_t backtrack;
 } mcsat_options_t;
 
 /** Initialize options with default values. */
