@@ -37,7 +37,7 @@ typedef enum {
   /** This clause is part of a variable definition */
   CLAUSE_DEFINITION,
   /** This clause is a learnt lemma */
-  CLAUSE_LEMMA
+  CLAUSE_LEMMA,
 } mcsat_clause_type_t;
 
 typedef struct {

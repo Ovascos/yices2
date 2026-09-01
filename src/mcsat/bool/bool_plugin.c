@@ -65,9 +65,6 @@ typedef struct {
    */
   bool reduce_requested;
 
-  /** Clauses to re-check for propagations. */
-  ivector_t clauses_to_repropagate;
-
   /** The watch manager for BCP */
   bcp_watch_manager_t wlm;
 
@@ -156,13 +153,13 @@ void bool_plugin_construct(plugin_t* plugin, plugin_context_t* ctx) {
   init_ivector(&bp->clauses_to_add, 0);
   init_ivector(&bp->clauses, 0);
   init_ivector(&bp->lemmas, 0);
-  init_ivector(&bp->clauses_to_repropagate, 0);
   bcp_watch_manager_construct(&bp->wlm);
   init_ivector(&bp->reason, 0);
   init_ivector(&bp->propagated, 0);
 
   bp->trail_i = 0;
   bp->propagated_size = 0;
+  bp->conflict = clause_ref_null;
 
   ctx->request_term_notification_by_kind(ctx, OR_TERM, false);
   ctx->request_term_notification_by_kind(ctx, XOR_TERM, false);
@@ -197,7 +194,6 @@ void bool_plugin_destruct(plugin_t* plugin) {
   delete_ivector(&bp->clauses);
   delete_ivector(&bp->lemmas);
   bcp_watch_manager_destruct(&bp->wlm);
-  delete_ivector(&bp->clauses_to_repropagate); // BD: fixed memory leak
   delete_ivector(&bp->reason);
   delete_ivector(&bp->propagated);
   scope_holder_destruct(&bp->scope);
@@ -246,6 +242,7 @@ void bool_plugin_new_lemma_notify(plugin_t* plugin, ivector_t* lemma, trail_toke
   for (; i < bp->clauses_to_add.size; ++ i) {
     const clause_ref_t clause_ref = bp->clauses_to_add.data[i];
     assert(clause_db_is_clause(&bp->clause_db, clause_ref, true));
+    assert(clause_db_get_clause(&bp->clause_db, clause_ref)->size > 0);
     ivector_push(&bp->lemmas, clause_ref);
   }
 }
@@ -450,9 +447,10 @@ void bool_plugin_propagate_literal(bool_plugin_t* bp, mcsat_literal_t l, trail_t
   (*bp->stats.propagations) ++;
 
   literal_set_value(l, prop);
-  ivector_push(&bp->propagated, literal_get_variable(l));
 
   const variable_t x = literal_get_variable(l);
+  ivector_push(&bp->propagated, x);
+
   while (x >= bp->reason.size) {
     ivector_push(&bp->reason, clause_ref_null);
   }
@@ -500,9 +498,8 @@ void bool_plugin_add_new_clauses(bool_plugin_t* bp, trail_token_t* prop) {
       if (propagation_level == bp->ctx->trail->decision_level) {
         bool_plugin_propagate_literal(bp, c->literals[0], prop, c_ref);
       } else {
-        // Propagates at lower level (this happens with assumptions)
-        // we don't currently repropagate since we don't need to
-        ivector_push(&bp->clauses_to_repropagate, c_ref);
+        // Propagates at lower level (this happens with assumptions and unit clauses)
+        // currently, we don't do any special handling in this case, we should though
         bool_plugin_propagate_literal(bp, c->literals[0], prop, c_ref);
       }
     }
@@ -934,12 +931,10 @@ void bool_plugin_gc_sweep(plugin_t* plugin, const gc_info_t* gc_vars) {
   gc_info_sweep_ivector(&bp->gc_clauses, &bp->clauses_to_add);
   gc_info_sweep_ivector(&bp->gc_clauses, &bp->clauses);
   gc_info_sweep_ivector(&bp->gc_clauses, &bp->lemmas);
-  gc_info_sweep_ivector(&bp->gc_clauses, &bp->clauses_to_repropagate);
 
   assert(clause_db_is_clause_vector(&bp->clause_db, &bp->clauses_to_add, true));
   assert(clause_db_is_clause_vector(&bp->clause_db, &bp->clauses, true));
   assert(clause_db_is_clause_vector(&bp->clause_db, &bp->lemmas, true));
-  assert(clause_db_is_clause_vector(&bp->clause_db, &bp->clauses_to_repropagate, true));
 
   // Watch manager
   bcp_watch_manager_sweep(&bp->wlm, &bp->gc_clauses, gc_vars);

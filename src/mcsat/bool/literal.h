@@ -128,17 +128,10 @@ bool literal_is_true(mcsat_literal_t l, const mcsat_trail_t* trail) {
 /** Set the value of the literal */
 static inline
 void literal_set_value(mcsat_literal_t l, trail_token_t* token) {
-  variable_t l_var;
-  bool l_negated;
+  const variable_t l_var = literal_get_variable(l);
+  const bool l_negated = literal_is_negated(l);
 
-  l_var = literal_get_variable(l);
-  l_negated = literal_is_negated(l);
-
-  if (l_negated) {
-    token->add(token, l_var, &mcsat_value_false);
-  } else {
-    token->add(token, l_var, &mcsat_value_true);
-  }
+  token->add(token, l_var, l_negated ? &mcsat_value_false : &mcsat_value_true);
 }
 
 #endif /* MCSAT_LITERAL_H_ */
