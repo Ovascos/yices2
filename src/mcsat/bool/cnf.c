@@ -55,11 +55,8 @@ void cnf_remove(cnf_t* cnf, variable_t var) {
 
 static
 void cnf_add_clause(cnf_t* cnf, const mcsat_literal_t* lits, uint32_t lits_size, ivector_t* clauses_out, mcsat_clause_tag_t tag) {
-  uint32_t i, keep;
-  clause_ref_t clause_ref;
-  mcsat_literal_t* lits_copy;
-
-  lits_copy = NULL;
+  // this must not be used to generate empty clauses, would raise a conflict without conflict clause
+  assert(lits_size > 0);
 
   if (ctx_trace_enabled(cnf->ctx, "bool::cnf")) {
     ctx_trace_printf(cnf->ctx, "cnf_add_clause:");
@@ -67,29 +64,18 @@ void cnf_add_clause(cnf_t* cnf, const mcsat_literal_t* lits, uint32_t lits_size,
     ctx_trace_printf(cnf->ctx, "\n");
   }
 
-  // Make a copy of the literals
-  lits_copy = safe_malloc(sizeof(mcsat_literal_t) * lits_size);
-  for (i = 0, keep = 0; i < lits_size; ++ i) {
-    if (literal_has_value(lits[i], cnf->ctx->trail)) {
-      if (literal_get_value(lits[i], cnf->ctx->trail)) {
-        // true literal, true clause
-        goto finish;
-      } else {
-        // false literal, just skip it
-      }
+  for (uint32_t i = 0; i < lits_size; ++ i) {
+    if (literal_has_value(lits[i], cnf->ctx->trail) &&
+        literal_get_value(lits[i], cnf->ctx->trail)) {
+      // true literal, true clause
+      // don't report in NCB, as adding satisfied clauses in NCB beyond base level may cause a missed
+      // lower implication. At base decision level, we may learn satisfied clauses, but it's pointless.
+      return;
     }
-    lits_copy[keep ++] = lits[i];
-  }
-  lits_size = keep;
-
-  if (ctx_trace_enabled(cnf->ctx, "bool::cnf")) {
-    ctx_trace_printf(cnf->ctx, "cnf_add_clause: after simpl: ");
-    literals_print(lits_copy, lits_size, cnf->ctx->var_db, ctx_trace_out(cnf->ctx));
-    ctx_trace_printf(cnf->ctx, "\n");
   }
 
   // Add the clause
-  clause_ref = clause_db_new_clause(cnf->clause_db, lits_copy, lits_size, tag);
+  const clause_ref_t clause_ref = clause_db_new_clause(cnf->clause_db, lits, lits_size, tag);
   ivector_push(clauses_out, clause_ref);
   assert(clause_db_is_clause(cnf->clause_db, clause_ref, true));
 
@@ -99,9 +85,6 @@ void cnf_add_clause(cnf_t* cnf, const mcsat_literal_t* lits, uint32_t lits_size,
     assert(tag.var == cnf->variable);
     int_lset_add(&cnf->converted, cnf->variable, clause_ref);
   }
-
-finish:
-  safe_free(lits_copy);
 }
 
 static
