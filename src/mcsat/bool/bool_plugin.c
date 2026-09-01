@@ -353,6 +353,7 @@ int bool_plugin_attach_clause(bool_plugin_t* bp, const clause_ref_t c_ref, trail
   }
 
   // If it propagates, add it to the delayed propagation list (even empty clauses)
+  // TODO in NCB a learned clause that is fulfilled may not be learned. Rather backtrack? Or ignore the clauses.
   if (c->size == 1) {
     propagation_level = bp->ctx->trail->decision_level_base;
   } else if (literal_is_false(c->literals[1], bp->ctx->trail)) {
@@ -363,6 +364,7 @@ int bool_plugin_attach_clause(bool_plugin_t* bp, const clause_ref_t c_ref, trail
 
   // Attach the two first literals
   // ~c[0], ~c[1], i.e. when c[0] or c[1] become false we do something
+  // TODO for CB: handle unit clauses here for repropagation.
   if (c->size == 2) {
     bcp_watch_manager_add_to_watch(&bp->wlm, literal_negate(c->literals[0]), c_ref, true, c->literals[1]);
     bcp_watch_manager_add_to_watch(&bp->wlm, literal_negate(c->literals[1]), c_ref, true, c->literals[0]);
@@ -493,6 +495,8 @@ void bool_plugin_add_new_clauses(bool_plugin_t* bp, trail_token_t* prop) {
 
     if (propagation_level >= 0) {
       const mcsat_clause_t* c = clause_db_get_clause(&bp->clause_db, c_ref);
+      // Then a unit clause is not watched. It is not used in the clause_to_propagate. It is assigned due to the propagation, but at what level?
+      // TODO why do we keep the clauses_to_propagate if we're never ever using it except of GC?
       // If the clause propagates at current level, just propagate it
       assert(propagation_level <= bp->ctx->trail->decision_level);
       if (propagation_level == bp->ctx->trail->decision_level) {

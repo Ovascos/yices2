@@ -70,6 +70,7 @@ void cnf_add_clause(cnf_t* cnf, const mcsat_literal_t* lits, uint32_t lits_size,
       // true literal, true clause
       // don't report in NCB, as adding satisfied clauses in NCB beyond base level may cause a missed
       // lower implication. At base decision level, we may learn satisfied clauses, but it's pointless.
+      // TODO check which cases call cnf translation beyond base decision level.
       return;
     }
   }
