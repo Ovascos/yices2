@@ -19,6 +19,8 @@
 #ifndef BOOL_PLUGIN_TYPES_H_
 #define BOOL_PLUGIN_TYPES_H_
 
+#include <stdint.h>
+
 /** Literal is just a variable that might be negated */
 typedef int32_t mcsat_literal_t;
 

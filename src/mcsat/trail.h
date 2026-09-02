@@ -102,7 +102,7 @@ struct mcsat_trail_s {
  */
 void trail_construct(mcsat_trail_t* trail, const variable_db_t* var_db);
 
-/** Copy contruct */
+/** Copy construct */
 void trail_construct_copy(mcsat_trail_t* trail, const mcsat_trail_t* from);
 
 /** Destruct a given trail */
