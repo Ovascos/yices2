@@ -1738,7 +1738,7 @@ static
 term_t na_plugin_explain_propagation(plugin_t* plugin, variable_t var, ivector_t* reasons) {
   na_plugin_t* na = (na_plugin_t*) plugin;
 
-  // We only propagate evaluations, and we explain them using the literal itself
+  // We currently only propagate evaluations, and we explain them using the literal itself
   // The only other propagations are at 0-level, and those we explain with the value and no reasons
   term_t atom = variable_db_get_term(na->ctx->var_db, var);
   if (ctx_trace_enabled(na->ctx, "na::conflict")) {
@@ -1747,7 +1747,7 @@ term_t na_plugin_explain_propagation(plugin_t* plugin, variable_t var, ivector_t
   }
   const mcsat_value_t* value = trail_get_value(na->ctx->trail, var);
   if (ctx_trace_enabled(na->ctx, "na::conflict")) {
-    ctx_trace_printf(na->ctx, "assigned to:");
+    ctx_trace_printf(na->ctx, "assigned to: ");
     mcsat_value_print(value, ctx_trace_out(na->ctx));
     ctx_trace_printf(na->ctx, "\n");
   }
@@ -1765,7 +1765,7 @@ term_t na_plugin_explain_propagation(plugin_t* plugin, variable_t var, ivector_t
   } else {
     // we just return true => var = value
     // this is only allowed at base level when explaining under assumptions
-    // there is currently no was to assert this properly
+    // there is currently no way to assert this properly
     // assert(trail_is_at_base_level(na->ctx->trail));
     return mcsat_value_to_term(value, na->ctx->tm);
   }
