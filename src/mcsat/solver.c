@@ -58,7 +58,6 @@
 #include "terms/term_substitution.h"
 
 #include "utils/dprng.h"
-#include "model/model_queries.h"
 #include "io/model_printer.h"
 
 #include "yices.h"
@@ -507,9 +506,8 @@ bool trail_token_add(trail_token_t* token, variable_t x, const mcsat_value_t* va
   plugin_trail_token_t* tk = (plugin_trail_token_t*) token;
   mcsat_solver_t* mcsat = tk->ctx->mcsat;
   mcsat_trail_t* trail = mcsat->trail;
-  bool is_decision;
 
-  is_decision = tk->x != variable_null;
+  const bool is_decision = tk->x != variable_null;
 
   if (ctx_trace_enabled(&tk->ctx->ctx, "trail::add")) {
     if (is_decision) {
