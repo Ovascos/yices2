@@ -117,7 +117,7 @@ typedef enum {
 
 typedef struct {
   /** Main evaluation method */
-  bool (*evaluates_at) (const mcsat_evaluator_interface_t* data, term_t t, int_mset_t* vars, mcsat_value_t* value, uint32_t trail_size);
+  mcsat_evaluator_interface_t evaluator_interface;
   /** The solver */
   mcsat_solver_t* solver;
 } mcsat_evaluator_t;
@@ -396,7 +396,7 @@ void mcsat_heuristics_init(mcsat_solver_t* mcsat, const param_t *params) {
 }
 
 static
-bool mcsat_evaluates_at(const mcsat_evaluator_interface_t* self, term_t t, int_mset_t* vars, mcsat_value_t* value, uint32_t trail_size) {
+bool mcsat_evaluates_at(const mcsat_evaluator_interface_t* self, term_t t, int_mset_t* vars, const mcsat_value_t* value) {
 
   const mcsat_solver_t* mcsat = ((const mcsat_evaluator_t*) self)->solver;
   assert(value != NULL);
@@ -489,9 +489,16 @@ bool mcsat_evaluates_at(const mcsat_evaluator_interface_t* self, term_t t, int_m
 }
 
 /** Construct the mcsat evaluator */
+static inline
 void mcsat_evaluator_construct(mcsat_evaluator_t* evaluator, mcsat_solver_t* solver) {
-  evaluator->evaluates_at = mcsat_evaluates_at;
+  evaluator->evaluator_interface.evaluates = mcsat_evaluates_at;
   evaluator->solver = solver;
+}
+
+static inline
+mcsat_evaluator_interface_t* mcsat_evaluator_get(mcsat_solver_t* solver)
+{
+  return &solver->evaluator.evaluator_interface;
 }
 
 /** Callback on propagations */
@@ -2139,7 +2146,7 @@ term_t mcsat_analyze_final(mcsat_solver_t* mcsat, conflict_t* input_conflict) {
   mcsat_trail_t* trail = mcsat->trail;
 
   conflict_t conflict;
-  conflict_construct(&conflict, &literals, false, (mcsat_evaluator_interface_t*) &mcsat->evaluator, mcsat->var_db, trail, &mcsat->tm, trace);
+  conflict_construct(&conflict, &literals, false, mcsat_evaluator_get(mcsat), mcsat->var_db, trail, &mcsat->tm, trace);
 
   // We save the trail, and then restore at the end
   mcsat_trail_t saved_trail;
@@ -2376,7 +2383,7 @@ void mcsat_analyze_conflicts(mcsat_solver_t* mcsat, uint32_t* restart_resource) 
         // reason && x_eq_t evaluates to false with assumptions
         // but x_eq_t evaluates to true with trail
         ivector_push(&reason, opposite_term(x_eq_t));
-        conflict_construct(&conflict, &reason, false, (mcsat_evaluator_interface_t*) &mcsat->evaluator, mcsat->var_db, mcsat->trail, &mcsat->tm, mcsat->ctx->trace);
+        conflict_construct(&conflict, &reason, false, mcsat_evaluator_get(mcsat), mcsat->var_db, mcsat->trail, &mcsat->tm, mcsat->ctx->trace);
         mcsat_set_interpolant_from_internal(mcsat, mcsat_analyze_final(mcsat, &conflict));
         conflict_destruct(&conflict);
       } else {
@@ -2406,7 +2413,7 @@ void mcsat_analyze_conflicts(mcsat_solver_t* mcsat, uint32_t* restart_resource) 
   }
 
   // Construct the conflict
-  conflict_construct(&conflict, &reason, true, (mcsat_evaluator_interface_t*) &mcsat->evaluator, mcsat->var_db, mcsat->trail, &mcsat->tm, mcsat->ctx->trace);
+  conflict_construct(&conflict, &reason, true, mcsat_evaluator_get(mcsat), mcsat->var_db, mcsat->trail, &mcsat->tm, mcsat->ctx->trace);
   if (trace_enabled(trace, "mcsat::conflict::check")) {
     // Don't check bool conflicts: they are implied by the formula (clauses)
     if (plugin_i != mcsat->bool_plugin_id) {

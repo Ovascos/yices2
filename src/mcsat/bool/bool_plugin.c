@@ -787,7 +787,7 @@ term_t bool_plugin_explain_propagation(plugin_t* plugin, variable_t var, ivector
   return bool2term(var_value);
 }
 
-bool bool_plugin_explain_evaluation(plugin_t* plugin, term_t t, int_mset_t* vars, mcsat_value_t* value) {
+bool bool_plugin_explain_evaluation(plugin_t* plugin, term_t t, int_mset_t* vars, const mcsat_value_t* value) {
 
   bool_plugin_t* bp = (bool_plugin_t*) plugin;
   const variable_db_t* var_db = bp->ctx->var_db;
