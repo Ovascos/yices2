@@ -116,12 +116,6 @@ struct na_plugin_s {
 };
 
 /**
- * Gets all the arithmetic variables from a non-atom t and adds their corresponding
- * mcsat variable to vars_out.
- */
-void na_plugin_get_term_variables(na_plugin_t* na, term_t t, int_mset_t* vars_out);
-
-/**
  * Returns all arithmetic variables from a constraint (term) c and adds their corresponding
  * mcsat variable to vars_out. Returns false otherwise.
  */

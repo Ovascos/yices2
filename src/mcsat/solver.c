@@ -58,7 +58,6 @@
 #include "terms/term_substitution.h"
 
 #include "utils/dprng.h"
-#include "model/model_queries.h"
 #include "io/model_printer.h"
 
 #include "yices.h"
@@ -69,8 +68,10 @@
 /**
  * Notification of new variables for the main solver.
  */
-typedef struct solver_new_variable_notify_s {
-  void (*new_variable) (struct solver_new_variable_notify_s* self, variable_t x);
+typedef struct {
+  /** The interface, must be the first entry. */
+  variable_db_new_variable_notify_t notify_interface;
+  /** The solver */
   mcsat_solver_t* mcsat;
 } solver_new_variable_notify_t;
 
@@ -110,14 +111,14 @@ typedef enum {
   /** Add the size of the lemma */
   LEMMA_WEIGHT_SIZE,
   /** Add the glue of the lemma */
-  LEMMA_WEIGHT_GLUE
+  LEMMA_WEIGHT_GLUE,
 } lemma_weight_type_t;
 
 #define MCSAT_MAX_PLUGINS 10
 
 typedef struct {
-  /** Main evaluation method */
-  bool (*evaluates_at) (const mcsat_evaluator_interface_t* data, term_t t, int_mset_t* vars, mcsat_value_t* value, uint32_t trail_size);
+  /** The interface, must be the first entry. */
+  mcsat_evaluator_interface_t evaluator_interface;
   /** The solver */
   mcsat_solver_t* solver;
 } mcsat_evaluator_t;
@@ -396,7 +397,7 @@ void mcsat_heuristics_init(mcsat_solver_t* mcsat, const param_t *params) {
 }
 
 static
-bool mcsat_evaluates_at(const mcsat_evaluator_interface_t* self, term_t t, int_mset_t* vars, mcsat_value_t* value, uint32_t trail_size) {
+bool mcsat_evaluates_at(const mcsat_evaluator_interface_t* self, term_t t, int_mset_t* vars, const mcsat_value_t* value) {
 
   const mcsat_solver_t* mcsat = ((const mcsat_evaluator_t*) self)->solver;
   assert(value != NULL);
@@ -489,9 +490,16 @@ bool mcsat_evaluates_at(const mcsat_evaluator_interface_t* self, term_t t, int_m
 }
 
 /** Construct the mcsat evaluator */
+static inline
 void mcsat_evaluator_construct(mcsat_evaluator_t* evaluator, mcsat_solver_t* solver) {
-  evaluator->evaluates_at = mcsat_evaluates_at;
+  evaluator->evaluator_interface.evaluates = mcsat_evaluates_at;
   evaluator->solver = solver;
+}
+
+static inline
+mcsat_evaluator_interface_t* mcsat_evaluator_get(mcsat_solver_t* solver)
+{
+  return &solver->evaluator.evaluator_interface;
 }
 
 /** Callback on propagations */
@@ -500,9 +508,8 @@ bool trail_token_add(trail_token_t* token, variable_t x, const mcsat_value_t* va
   plugin_trail_token_t* tk = (plugin_trail_token_t*) token;
   mcsat_solver_t* mcsat = tk->ctx->mcsat;
   mcsat_trail_t* trail = mcsat->trail;
-  bool is_decision;
 
-  is_decision = tk->x != variable_null;
+  const bool is_decision = tk->x != variable_null;
 
   if (ctx_trace_enabled(&tk->ctx->ctx, "trail::add")) {
     if (is_decision) {
@@ -641,6 +648,7 @@ void trail_token_construct(plugin_trail_token_t* token, mcsat_plugin_context_t* 
   token->used = 0;
 }
 
+static
 void mcsat_plugin_term_notification_by_kind(plugin_context_t* self, term_kind_t kind, bool is_internal) {
   uint32_t i;
   mcsat_plugin_context_t* mctx;
@@ -654,6 +662,7 @@ void mcsat_plugin_term_notification_by_kind(plugin_context_t* self, term_kind_t 
   }
 }
 
+static
 void mcsat_plugin_term_notification_by_type(plugin_context_t* self, type_kind_t kind) {
   uint32_t i;
   mcsat_plugin_context_t* mctx;
@@ -717,16 +726,6 @@ static inline
 void mcsat_bump_variable(mcsat_solver_t* mcsat, variable_t x, uint32_t factor) {
   var_queue_bump_variable(&mcsat->var_queue, x, factor);
 }
-
-#if 0
-static inline
-void mcsat_bump_variables_vector(mcsat_solver_t* mcsat, const ivector_t* vars) {
-  uint32_t i;
-  for (i = 0; i < vars->size; ++ i) {
-    mcsat_bump_variable(mcsat, vars->data[i], 1);
-  }
-}
-#endif
 
 static inline
 void mcsat_bump_variables_mset(mcsat_solver_t* mcsat, const int_mset_t* vars) {
@@ -832,6 +831,7 @@ void mcsat_plugin_context_decision_calls(plugin_context_t* self, type_kind_t typ
   mctx->mcsat->decision_makers[type] = self->plugin_id;
 }
 
+static
 void mcsat_plugin_context_construct(mcsat_plugin_context_t* ctx, mcsat_solver_t* mcsat, uint32_t plugin_i, const char* plugin_name) {
   ctx->ctx.plugin_id = plugin_i;
   ctx->ctx.var_db = mcsat->var_db;
@@ -876,24 +876,31 @@ void mcsat_term_registration_enqueue(mcsat_solver_t* mcsat, term_t t) {
 }
 
 static
-void mcsat_new_variable_notify(solver_new_variable_notify_t* self, variable_t x) {
+void mcsat_new_variable_notify(variable_db_new_variable_notify_t* self, variable_t x) {
+  mcsat_solver_t *mcsat = ((solver_new_variable_notify_t*) self)->mcsat;
   term_t t;
   uint32_t size;
 
   // Enqueue for registration
-  t = variable_db_get_term(self->mcsat->var_db, x);
-  mcsat_term_registration_enqueue(self->mcsat, t);
+  t = variable_db_get_term(mcsat->var_db, x);
+  mcsat_term_registration_enqueue(mcsat, t);
 
   // Ensure that the trail/model is aware of this
-  trail_new_variable_notify(self->mcsat->trail, x);
+  trail_new_variable_notify(mcsat->trail, x);
 
   // Add the variable to the queue
-  if (x >= self->mcsat->var_queue.size) {
-    size = x + x/2 + 1;
+  if (x >= mcsat->var_queue.size) {
+    size = x + (x/2) + 1;
     assert(size > x);
-    var_queue_extend(&self->mcsat->var_queue, size);
+    var_queue_extend(&mcsat->var_queue, size);
   }
-  var_queue_insert(&self->mcsat->var_queue, x);
+  var_queue_insert(&mcsat->var_queue, x);
+}
+
+static
+void mcsat_new_variable_notify_construct(solver_new_variable_notify_t* notify, mcsat_solver_t* mcsat) {
+  notify->mcsat = mcsat;
+  notify->notify_interface.new_variable = mcsat_new_variable_notify;
 }
 
 static
@@ -951,14 +958,11 @@ void mcsat_construct(mcsat_solver_t* mcsat, const context_t* ctx) {
   mcsat->tm.simplify_bveq1 = false;
   mcsat->tm.simplify_ite = false;
 
-  // The new variable listener
-  mcsat->var_db_notify.mcsat = mcsat;
-  mcsat->var_db_notify.new_variable = mcsat_new_variable_notify;
-
   // The variable database
   mcsat->var_db = safe_malloc(sizeof(variable_db_t));
   variable_db_construct(mcsat->var_db, mcsat->terms, mcsat->types, mcsat->ctx->trace);
-  variable_db_add_new_variable_listener(mcsat->var_db, (variable_db_new_variable_notify_t*)&mcsat->var_db_notify);
+  mcsat_new_variable_notify_construct(&mcsat->var_db_notify, mcsat);
+  variable_db_add_new_variable_listener(mcsat->var_db, &mcsat->var_db_notify.notify_interface);
 
   // List of assertions
   init_ivector(&mcsat->assertion_vars, 0);
@@ -995,7 +999,7 @@ void mcsat_construct(mcsat_solver_t* mcsat, const context_t* ctx) {
 
   // Plugin vectors
   mcsat->plugins_count = 0;
-  mcsat->plugin_in_conflict = 0;
+  mcsat->plugin_in_conflict = NULL;
 
   // Construct the evaluator
   mcsat_evaluator_construct(&mcsat->evaluator, mcsat);
@@ -1574,7 +1578,9 @@ void mcsat_backtrack_to(mcsat_solver_t* mcsat, uint32_t level, bool update_cache
   }
 
   // save target cache (when backtracking)
-  if (update_cache) trail_update_extra_cache(mcsat->trail);
+  if (update_cache) {
+    trail_update_extra_cache(mcsat->trail);
+  }
 }
 
 static
@@ -2139,7 +2145,7 @@ term_t mcsat_analyze_final(mcsat_solver_t* mcsat, conflict_t* input_conflict) {
   mcsat_trail_t* trail = mcsat->trail;
 
   conflict_t conflict;
-  conflict_construct(&conflict, &literals, false, (mcsat_evaluator_interface_t*) &mcsat->evaluator, mcsat->var_db, trail, &mcsat->tm, trace);
+  conflict_construct(&conflict, &literals, false, mcsat_evaluator_get(mcsat), mcsat->var_db, trail, &mcsat->tm, trace);
 
   // We save the trail, and then restore at the end
   mcsat_trail_t saved_trail;
@@ -2376,7 +2382,7 @@ void mcsat_analyze_conflicts(mcsat_solver_t* mcsat, uint32_t* restart_resource) 
         // reason && x_eq_t evaluates to false with assumptions
         // but x_eq_t evaluates to true with trail
         ivector_push(&reason, opposite_term(x_eq_t));
-        conflict_construct(&conflict, &reason, false, (mcsat_evaluator_interface_t*) &mcsat->evaluator, mcsat->var_db, mcsat->trail, &mcsat->tm, mcsat->ctx->trace);
+        conflict_construct(&conflict, &reason, false, mcsat_evaluator_get(mcsat), mcsat->var_db, mcsat->trail, &mcsat->tm, mcsat->ctx->trace);
         mcsat_set_interpolant_from_internal(mcsat, mcsat_analyze_final(mcsat, &conflict));
         conflict_destruct(&conflict);
       } else {
@@ -2406,7 +2412,7 @@ void mcsat_analyze_conflicts(mcsat_solver_t* mcsat, uint32_t* restart_resource) 
   }
 
   // Construct the conflict
-  conflict_construct(&conflict, &reason, true, (mcsat_evaluator_interface_t*) &mcsat->evaluator, mcsat->var_db, mcsat->trail, &mcsat->tm, mcsat->ctx->trace);
+  conflict_construct(&conflict, &reason, true, mcsat_evaluator_get(mcsat), mcsat->var_db, mcsat->trail, &mcsat->tm, mcsat->ctx->trace);
   if (trace_enabled(trace, "mcsat::conflict::check")) {
     // Don't check bool conflicts: they are implied by the formula (clauses)
     if (plugin_i != mcsat->bool_plugin_id) {
@@ -3317,7 +3323,7 @@ void mcsat_set_tracer(mcsat_solver_t* mcsat, tracer_t* tracer) {
   l2o_set_tracer(&mcsat->l2o, tracer);
 }
 
-
+static
 void mcsat_flush_lemmas(mcsat_solver_t* mcsat, ivector_t* out) {
   // Flush regular lemmas
   ivector_add(out, mcsat->plugin_lemmas.data, mcsat->plugin_lemmas.size);
