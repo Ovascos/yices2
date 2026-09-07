@@ -919,8 +919,9 @@ term_t ff_plugin_explain_propagation(plugin_t* plugin, variable_t var, ivector_t
 }
 
 static
-bool ff_plugin_explain_evaluation(plugin_t* plugin, term_t t, int_mset_t* vars, mcsat_value_t* value) {
+bool ff_plugin_explain_evaluation(plugin_t* plugin, term_t t, int_mset_t* vars, const mcsat_value_t* value) {
   ff_plugin_t* ff = (ff_plugin_t*) plugin;
+  (void) value;
 
   bool result = true;
 

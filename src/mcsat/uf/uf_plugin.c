@@ -2281,7 +2281,7 @@ term_t uf_plugin_explain_propagation(plugin_t* plugin, variable_t var, ivector_t
 }
 
 static
-bool uf_plugin_explain_evaluation(plugin_t* plugin, term_t t, int_mset_t* vars, mcsat_value_t* value) {
+bool uf_plugin_explain_evaluation(plugin_t* plugin, term_t t, int_mset_t* vars, const mcsat_value_t* value) {
   uf_plugin_t* uf = (uf_plugin_t*) plugin;
 
   if (ctx_trace_enabled(uf->ctx, "uf_plugin")) {

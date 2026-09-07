@@ -288,7 +288,7 @@ struct plugin_s {
    * Explain an evaluation. Return true if the constraint indeed evaluates to the
    * given value. The output variables should be mcsat variables (variable_t).
    */
-  bool (*explain_evaluation) (plugin_t* plugin, term_t t, int_mset_t* vars, mcsat_value_t* value);
+  bool (*explain_evaluation) (plugin_t* plugin, term_t t, int_mset_t* vars, const mcsat_value_t* value);
 
   /**
    * Simplify internal conflict literal (e.g., ROOT_CONSTRAINT) in terms of conjunction of

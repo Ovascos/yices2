@@ -135,8 +135,8 @@ static
 void bool_plugin_heuristics_init(bool_plugin_t* bp) {
   // Clause scoring
   bp->heuristic_params.clause_score_bump_factor = 1;
-  bp->heuristic_params.clause_score_decay_factor = 0.999;
-  bp->heuristic_params.clause_score_limit = 1e20;
+  bp->heuristic_params.clause_score_decay_factor = 0.999F;
+  bp->heuristic_params.clause_score_limit = 1e20F;
 
   // Clause database reduction (conflict-based schedule, cf. smt_core)
   bp->heuristic_params.reduce_init_threshold = 300;
@@ -705,6 +705,7 @@ static
 void bool_plugin_decide(plugin_t* plugin, variable_t x, trail_token_t* decide, bool must) {
   bool_plugin_t* bp = (bool_plugin_t*) plugin;
   mcsat_literal_t literal;
+  (void) must;
 
   assert(!trail_has_value(bp->ctx->trail, x));
 
@@ -719,6 +720,7 @@ void bool_plugin_decide(plugin_t* plugin, variable_t x, trail_token_t* decide, b
   literal_set_value(literal, decide);
 }
 
+static
 void bool_plugin_get_conflict(plugin_t* plugin, ivector_t* conflict) {
   bool_plugin_t* bp = (bool_plugin_t*) plugin;
 
@@ -747,6 +749,7 @@ void bool_plugin_get_conflict(plugin_t* plugin, ivector_t* conflict) {
   }
 }
 
+static
 term_t bool_plugin_explain_propagation(plugin_t* plugin, variable_t var, ivector_t* reasons) {
   bool_plugin_t* bp = (bool_plugin_t*) plugin;
 
@@ -787,7 +790,8 @@ term_t bool_plugin_explain_propagation(plugin_t* plugin, variable_t var, ivector
   return bool2term(var_value);
 }
 
-bool bool_plugin_explain_evaluation(plugin_t* plugin, term_t t, int_mset_t* vars, mcsat_value_t* value) {
+static
+bool bool_plugin_explain_evaluation(plugin_t* plugin, term_t t, int_mset_t* vars, const mcsat_value_t* value) {
 
   bool_plugin_t* bp = (bool_plugin_t*) plugin;
   const variable_db_t* var_db = bp->ctx->var_db;
@@ -807,18 +811,18 @@ bool bool_plugin_explain_evaluation(plugin_t* plugin, term_t t, int_mset_t* vars
       variable_t t1_var = variable_db_get_variable_if_exists(var_db, t1);
       variable_t t2_var = variable_db_get_variable_if_exists(var_db, t2);
       if (t1_var != variable_null && t2_var != variable_null) {
-	if (trail_has_value(trail, t1_var) && trail_has_value(trail, t2_var)) {
+        if (trail_has_value(trail, t1_var) && trail_has_value(trail, t2_var)) {
           int_mset_add(vars, t1_var);
           int_mset_add(vars, t2_var);
-	  bool negated = is_neg_term(t);
-	  const mcsat_value_t* t1_var_value = trail_get_value(trail, t1_var);
-	  const mcsat_value_t* t2_var_value = trail_get_value(trail, t2_var);
-	  if (negated) {
-	    return (t1_var_value->b == t2_var_value->b) != value->b;
-	  } else {
-	    return (t1_var_value->b == t2_var_value->b) == value->b;
-	  }
-	}
+          bool negated = is_neg_term(t);
+          const mcsat_value_t* t1_var_value = trail_get_value(trail, t1_var);
+          const mcsat_value_t* t2_var_value = trail_get_value(trail, t2_var);
+          if (negated) {
+            return (t1_var_value->b == t2_var_value->b) != value->b;
+          } else {
+            return (t1_var_value->b == t2_var_value->b) == value->b;
+          }
+        }
       }
     }
     // couldn't evaluate
@@ -839,6 +843,7 @@ bool bool_plugin_explain_evaluation(plugin_t* plugin, term_t t, int_mset_t* vars
   return false;
 }
 
+static
 void bool_plugin_push(plugin_t* plugin) {
   bool_plugin_t* bp = (bool_plugin_t*) plugin;
 
@@ -850,6 +855,7 @@ void bool_plugin_push(plugin_t* plugin) {
       NULL);
 }
 
+static
 void bool_plugin_pop(plugin_t* plugin) {
   bool_plugin_t* bp = (bool_plugin_t*) plugin;
 
@@ -899,6 +905,7 @@ bool bool_plugin_binary_clause_is_true(const mcsat_clause_t* c, const mcsat_trai
      literal_is_true(c->literals[1], trail));
 }
 
+static
 void bool_plugin_gc_mark(plugin_t* plugin, gc_info_t* gc_vars) {
 
   bool_plugin_t* bp = (bool_plugin_t*) plugin;
@@ -978,6 +985,7 @@ void bool_plugin_gc_mark(plugin_t* plugin, gc_info_t* gc_vars) {
   clause_db_gc_mark(db, &bp->gc_clauses, gc_vars);
 }
 
+static
 void bool_plugin_gc_sweep(plugin_t* plugin, const gc_info_t* gc_vars) {
 
   bool_plugin_t* bp = (bool_plugin_t*) plugin;
@@ -1100,6 +1108,7 @@ void bool_plugin_set_exception_handler(plugin_t* plugin, jmp_buf* handler) {
 
 static
 void bool_plugin_decide_assignment(plugin_t* plugin, variable_t x, const mcsat_value_t* value, trail_token_t* decide) {
+  (void) plugin;
   // Nothing to do here apart from setting the value
   decide->add(decide, x, value);
 }
