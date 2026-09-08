@@ -223,7 +223,9 @@ void bool_plugin_new_term_notify(plugin_t* plugin, term_t term, trail_token_t* p
   const variable_t term_var = variable_db_get_variable(bp->ctx->var_db, term);
   bcp_watch_manager_new_variable_notify(&bp->wlm, term_var);
 
-  // If constant true, then propagate it's true
+  // Registering True and False as terms should not happen.
+  assert(term != true_term && term != false_term);
+  // Passing a true_term is a bug, but not unsound if we treat it correctly.
   if (term == true_term) {
     prop->add_at_level(prop, term_var, &mcsat_value_true, bp->ctx->trail->decision_level_base);
   }

@@ -1748,6 +1748,14 @@ void mcsat_assert_formula(mcsat_solver_t* mcsat, term_t f, bool assumption_oblig
   assert(trail_is_at_base_level(mcsat->trail));
   assert(int_queue_is_empty(&mcsat->registration_queue));
 
+  if (f == true_term) {
+    return;
+  }
+  if (f == false_term) {
+    trail_set_inconsistent(mcsat->trail);
+    return;
+  }
+
   // Add the terms
   const term_t f_pos = unsigned_term(f);
   if (assumption_obligation) {
