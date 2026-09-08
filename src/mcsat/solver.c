@@ -2089,42 +2089,32 @@ void mcsat_simplify_literals(mcsat_solver_t* mcsat, ivector_t* literals, bool li
 
 static
 term_t mcsat_analyze_final(mcsat_solver_t* mcsat, conflict_t* input_conflict) {
-
-  variable_t var;
-  plugin_t* plugin = NULL;
-  //  uint32_t plugin_i = MCSAT_MAX_PLUGINS; // BD: infer dead store
-  uint32_t plugin_i;
   tracer_t* trace = mcsat->ctx->trace;
-  term_t substitution;
 
   // First we try to massage the conflict into presentable form
   ivector_t literals;
   init_ivector(&literals, 0);
   conflict_get_negated_literals(input_conflict, &literals);
 
-  ivector_t reason_literals;
-  init_ivector(&reason_literals, 0);
-
   assert(mcsat->trail->elements.size > 0);
 
-  mcsat_trail_t* trail = mcsat->trail;
+  // A temporary copy of the trail to be destructed while resolution.
+  // This is required by the conflict handling.
+  mcsat_trail_t trail;
+  trail_construct_copy(&trail, mcsat->trail);
 
   conflict_t conflict;
-  conflict_construct(&conflict, &literals, false, mcsat_evaluator_get(mcsat), mcsat->var_db, trail, &mcsat->tm, trace);
-
-  // We save the trail, and then restore at the end
-  mcsat_trail_t saved_trail;
-  trail_construct_copy(&saved_trail, mcsat->trail);
+  conflict_construct(&conflict, &literals, false, mcsat_evaluator_get(mcsat), mcsat->var_db, &trail, &mcsat->tm, trace);
 
   // Analyze while at least one variable at conflict level
-  while (trail_size(mcsat->trail) > 0) {
+  while (trail_size(&trail) > 0) {
 
     // Variable we might be resolving
-    var = trail_back(mcsat->trail);
+    const variable_t var = trail_back(&trail);
 
     if (trace_enabled(trace, "mcsat::conflict")) {
       mcsat_trace_printf(trace, "current trail:\n");
-      trail_print(trail, trace->file);
+      trail_print(&trail, trace->file);
       mcsat_trace_printf(trace, "current conflict: ");
       conflict_print(&conflict, trace->file);
       mcsat_trace_printf(trace, "var: ");
@@ -2133,15 +2123,15 @@ term_t mcsat_analyze_final(mcsat_solver_t* mcsat, conflict_t* input_conflict) {
     }
 
     // Skip decisions
-    if (trail_get_assignment_type(mcsat->trail, var) == DECISION) {
-      trail_pop_decision(mcsat->trail);
+    if (trail_get_assignment_type(&trail, var) == DECISION) {
+      trail_pop_decision(&trail);
       conflict_recompute_level_info(&conflict);
       continue;
     }
 
     // Skip the conflict variable (it was propagated)
     if (var == mcsat->variable_in_conflict) {
-      trail_pop_propagation(mcsat->trail);
+      trail_pop_propagation(&trail);
       conflict_recompute_level_info(&conflict);
       continue;
     }
@@ -2149,8 +2139,9 @@ term_t mcsat_analyze_final(mcsat_solver_t* mcsat, conflict_t* input_conflict) {
     if (conflict_contains(&conflict, var)) {
       // Get the plugin that performed the propagation. An assertion has none:
       // it is required, not derived, so there is nothing to explain it with.
-      plugin_i = trail_get_source_id(trail, var);
-      if (trail_get_assignment_type(trail, var) == ASSERTION) {
+      const uint32_t plugin_i = trail_get_source_id(&trail, var);
+      plugin_t* plugin = NULL;
+      if (trail_get_assignment_type(&trail, var) == ASSERTION) {
         assert(plugin_i == MCSAT_MAX_PLUGINS);
         plugin = NULL;
       } else {
@@ -2171,18 +2162,19 @@ term_t mcsat_analyze_final(mcsat_solver_t* mcsat, conflict_t* input_conflict) {
       }
 
       // Resolve the variable
+      term_t substitution;
       ivector_reset(&literals);
       if (plugin) {
         assert(plugin->explain_propagation);
         substitution = plugin->explain_propagation(plugin, var, &literals);
       } else {
-        bool value = trail_get_boolean_value(trail, var);
+        bool value = trail_get_boolean_value(&trail, var);
         substitution = value ? true_term : false_term;
       }
       conflict_resolve_propagation(&conflict, var, substitution, &literals);
     } else {
       // Continue with resolution
-      trail_pop_propagation(mcsat->trail);
+      trail_pop_propagation(&trail);
     }
   }
 
@@ -2191,12 +2183,7 @@ term_t mcsat_analyze_final(mcsat_solver_t* mcsat, conflict_t* input_conflict) {
     conflict_print(&conflict, trace->file);
   }
 
-  // Restore the trail
-  mcsat_trail_t tmp;
-  tmp = *mcsat->trail;
-  *mcsat->trail = saved_trail;
-  saved_trail = tmp;
-  trail_destruct(&saved_trail);
+  trail_destruct(&trail);
 
   // Simplify the conflict literals
   ivector_t* final_literals = conflict_get_literals(&conflict);
@@ -2221,7 +2208,6 @@ term_t mcsat_analyze_final(mcsat_solver_t* mcsat, conflict_t* input_conflict) {
 
   // Remove temps
   delete_ivector(&literals);
-  delete_ivector(&reason_literals);
   conflict_destruct(&conflict);
 
   if (trace_enabled(trace, "mcsat::conflict")) {
