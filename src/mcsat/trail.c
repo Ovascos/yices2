@@ -273,6 +273,7 @@ void trail_pop_propagation(mcsat_trail_t* trail) {
   const variable_t x = ivector_last(&trail->elements);
   assert(trail_get_assignment_type(trail, x) == PROPAGATION);
   const uint32_t x_level = trail_get_level(trail, x);
+  assert(trail_get_assignment_type(trail, x) == PROPAGATION || trail_get_assignment_type(trail, x) == ASSERTION);
   assert(x_level <= trail->decision_level);
   if (x_level == trail->decision_level) {
     trail_undo_value(trail, x);
