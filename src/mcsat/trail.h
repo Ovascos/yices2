@@ -27,8 +27,10 @@
 typedef enum {
   /** A decided value */
   DECISION,
-  /** A propagated value */
+  /** A propagated value, explainable by the plugin that propagated it */
   PROPAGATION,
+  /** A value required by an assertion, justified by nothing */
+  ASSERTION,
   /** No value */
   UNASSIGNED
 } assignment_type_t;
@@ -275,6 +277,9 @@ void trail_add_decision(mcsat_trail_t* trail, variable_t x, const mcsat_value_t*
 /** Add a new propagation x -> value at given level <= decision level */
 void trail_add_propagation(mcsat_trail_t* trail, variable_t x, const mcsat_value_t* value, uint32_t id, uint32_t level);
 
+/** Add an assertion x -> value at the base level. */
+void trail_add_assertion(mcsat_trail_t* trail, variable_t x, const mcsat_value_t* value, uint32_t id);
+
 /** Returns the type of assignment the variable has */
 static inline
 assignment_type_t trail_get_assignment_type(const mcsat_trail_t* trail, variable_t x) {
@@ -287,7 +292,7 @@ static inline
 uint32_t trail_get_source_id(const mcsat_trail_t* trail, variable_t x) {
   assert(x < trail->id.size);
   return trail->id.data[x];
-};
+}
 
 /** Pop the top of the trail (propagation) */
 void trail_pop_propagation(mcsat_trail_t* trail);

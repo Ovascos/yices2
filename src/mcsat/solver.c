@@ -1781,7 +1781,7 @@ void mcsat_assert_formula(mcsat_solver_t* mcsat, term_t f, bool assumption_oblig
   if (f_pos == f) {
     // f = true
     if (!trail_has_value(mcsat->trail, f_pos_var)) {
-      trail_add_propagation(mcsat->trail, f_pos_var, &mcsat_value_true, MCSAT_MAX_PLUGINS, mcsat->trail->decision_level);
+      trail_add_assertion(mcsat->trail, f_pos_var, &mcsat_value_true, MCSAT_MAX_PLUGINS);
     } else {
       // If negative already, we're inconsistent
       if (!trail_get_boolean_value(mcsat->trail, f_pos_var)) {
@@ -1792,7 +1792,7 @@ void mcsat_assert_formula(mcsat_solver_t* mcsat, term_t f, bool assumption_oblig
   } else {
     // f = false
     if (!trail_has_value(mcsat->trail, f_pos_var)) {
-      trail_add_propagation(mcsat->trail, f_pos_var, &mcsat_value_false, MCSAT_MAX_PLUGINS, mcsat->trail->decision_level);
+      trail_add_assertion(mcsat->trail, f_pos_var, &mcsat_value_false, MCSAT_MAX_PLUGINS);
     } else {
       // If positive already, we're inconsistent
       if (trail_get_boolean_value(mcsat->trail, f_pos_var)) {
@@ -2147,12 +2147,15 @@ term_t mcsat_analyze_final(mcsat_solver_t* mcsat, conflict_t* input_conflict) {
     }
 
     if (conflict_contains(&conflict, var)) {
-      // Get the plugin that performed the propagation
+      // Get the plugin that performed the propagation. An assertion has none:
+      // it is required, not derived, so there is nothing to explain it with.
       plugin_i = trail_get_source_id(trail, var);
-      if (plugin_i != MCSAT_MAX_PLUGINS) {
-        plugin = mcsat->plugins[plugin_i].plugin;
-      } else {
+      if (trail_get_assignment_type(trail, var) == ASSERTION) {
+        assert(plugin_i == MCSAT_MAX_PLUGINS);
         plugin = NULL;
+      } else {
+        assert(plugin_i < MCSAT_MAX_PLUGINS);
+        plugin = mcsat->plugins[plugin_i].plugin;
       }
 
       if (trace_enabled(trace, "mcsat::conflict")) {
@@ -2618,15 +2621,17 @@ bool mcsat_decide_assumption(mcsat_solver_t* mcsat, value_table_t* vtbl) {
     // If the variable already has a value in the trail check for consistency
     if (trail_has_value(mcsat->trail, var)) {
       // If the value is different from given value, we are in conflict
-      assert(trail_get_assignment_type(mcsat->trail, var) == PROPAGATION);
+      assert(trail_get_assignment_type(mcsat->trail, var) == PROPAGATION ||
+             trail_get_assignment_type(mcsat->trail, var) == ASSERTION);
       const mcsat_value_t* var_trail_value = trail_get_value(mcsat->trail, var);
       const bool eq = mcsat_value_eq(&var_mdl_value, var_trail_value);
       if (!eq) {
-        // Who propagated the value (MCSAT_MAX_PLUGINS if an assertion)
-        const uint32_t prop_plugin_i = trail_get_source_id(mcsat->trail, var);
-        if (prop_plugin_i == MCSAT_MAX_PLUGINS) {
+        // Who fixed the value: an assertion has no plugin to blame
+        if (trail_get_assignment_type(mcsat->trail, var) == ASSERTION) {
           mcsat->plugin_in_conflict = NULL;
         } else {
+          const uint32_t prop_plugin_i = trail_get_source_id(mcsat->trail, var);
+          assert(prop_plugin_i < MCSAT_MAX_PLUGINS);
           mcsat->plugin_in_conflict = mcsat->plugins[prop_plugin_i].plugin_ctx;
         }
         mcsat->variable_in_conflict = var;

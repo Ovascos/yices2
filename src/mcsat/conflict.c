@@ -549,7 +549,10 @@ void conflict_resolve_propagation(conflict_t* conflict, variable_t var, term_t s
   // * add substitution
 
   assert(trail_back(conflict->trail) == var);
-  assert(trail_get_assignment_type(conflict->trail, var) == PROPAGATION);
+  // Assertions get here from mcsat_analyze_final, which resolves them against
+  // their own value instead of asking a plugin for an explanation
+  assert(trail_get_assignment_type(conflict->trail, var) == PROPAGATION ||
+         trail_get_assignment_type(conflict->trail, var) == ASSERTION);
 
   // Got through all the variables where the resolution variable is top and
   // get the disjuncts
