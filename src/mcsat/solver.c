@@ -2136,7 +2136,7 @@ term_t mcsat_analyze_final(mcsat_solver_t* mcsat, conflict_t* input_conflict) {
       // it is required, not derived, so there is nothing to explain it with.
       const uint32_t plugin_i = trail_get_source_id(&trail, var);
       plugin_t* plugin = NULL;
-      if (trail_get_assignment_type(trail, var) == ASSERTION) {
+      if (trail_get_assignment_type(&trail, var) == ASSERTION) {
         assert(plugin_i == MCSAT_MAX_PLUGINS);
         plugin = NULL;
       } else {
