@@ -27,6 +27,21 @@
 #include "mcsat/utils/int_lset.h"
 #include "mcsat/utils/int_mset.h"
 
+typedef struct clause_adder_interface_s clause_adder_interface_t;
+
+/**
+ * Object that takes the clauses produced by the CNF conversion.
+ */
+struct clause_adder_interface_s {
+
+  /**
+   * Add the clause given by the literals and return its reference. The adder
+   * may decline the clause, in which case it returns clause_ref_null and the
+   * clause is not recorded as part of a variable definition.
+   */
+  clause_ref_t (*clause_add) (clause_adder_interface_t* self, const mcsat_literal_t* lits, uint32_t lits_size, mcsat_clause_tag_t tag);
+};
+
 /**
  * The CNF manager keeps the definitional CNF transformation. It converts
  * the given Boolean term recursively by creating a variable for the (positive)
@@ -34,8 +49,8 @@
  */
 typedef struct {
 
-  /** The clause database */
-  clause_db_t* clause_db;
+  /** Where the produced clauses go */
+  clause_adder_interface_t* clause_adder;
 
   /** The mcsat context */
   plugin_context_t* ctx;
@@ -63,24 +78,22 @@ typedef struct {
 
 
 /** Construct the CNF manager */
-void cnf_construct(cnf_t* cnf, plugin_context_t* ctx, clause_db_t* clause_db);
+void cnf_construct(cnf_t* cnf, plugin_context_t* ctx, clause_adder_interface_t* clause_adder);
 
 /** Destruct the CNF manager */
 void cnf_destruct(cnf_t* cnf);
 
 /**
- * Add clauses for the given term to the clause database. All clauses
- * are added to the given vector. Clauses are added as definitions for the
- * internal (positive) nodes, and all the necessary variables are added to
- * the variable database.
+ * Add clauses for the given term through the clause adder. Clauses are added
+ * as definitions for the internal (positive) nodes, and all the necessary
+ * variables are added to the variable database.
  */
-mcsat_literal_t cnf_convert(cnf_t* cnf, term_t t, ivector_t* t_clauses);
+mcsat_literal_t cnf_convert(cnf_t* cnf, term_t t);
 
 /**
- * Add the clause for the given lemma to the clause database. The clause will
- * be added to the given vector.
+ * Add the clause for the given lemma through the clause adder.
  */
-void cnf_convert_lemma(cnf_t* cnf, const ivector_t* lemma, ivector_t* clauses);
+void cnf_convert_lemma(cnf_t* cnf, const ivector_t* lemma);
 
 /**
  * Gets all converted clauses of a given variable if the variable was converted.
