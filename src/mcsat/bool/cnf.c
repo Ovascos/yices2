@@ -20,8 +20,8 @@
 
 #include "mcsat/tracing.h"
 
-void cnf_construct(cnf_t* cnf, plugin_context_t* ctx, clause_db_t* clause_db) {
-  cnf->clause_db = clause_db;
+void cnf_construct(cnf_t* cnf, plugin_context_t* ctx, clause_adder_interface_t* clause_adder) {
+  cnf->clause_adder = clause_adder;
   cnf->ctx = ctx;
   cnf->variable = variable_null;
   cnf->gc_mark_index = 0;
@@ -54,9 +54,10 @@ void cnf_remove(cnf_t* cnf, variable_t var) {
 }
 
 static
-void cnf_add_clause(cnf_t* cnf, const mcsat_literal_t* lits, uint32_t lits_size, ivector_t* clauses_out, mcsat_clause_tag_t tag) {
+void cnf_add_clause(cnf_t* cnf, const mcsat_literal_t* lits, uint32_t lits_size, mcsat_clause_tag_t tag) {
   // this must not be used to generate empty clauses, would raise a conflict without conflict clause
   assert(lits_size > 0);
+  assert(cnf->variable == variable_null || (tag.type == CLAUSE_DEFINITION && tag.var == cnf->variable));
 
   if (ctx_trace_enabled(cnf->ctx, "bool::cnf")) {
     ctx_trace_printf(cnf->ctx, "cnf_add_clause:");
@@ -64,32 +65,17 @@ void cnf_add_clause(cnf_t* cnf, const mcsat_literal_t* lits, uint32_t lits_size,
     ctx_trace_printf(cnf->ctx, "\n");
   }
 
-  for (uint32_t i = 0; i < lits_size; ++ i) {
-    if (literal_has_value(lits[i], cnf->ctx->trail) &&
-        literal_get_value(lits[i], cnf->ctx->trail)) {
-      // true literal, true clause
-      // don't report in NCB, as adding satisfied clauses in NCB beyond base level may cause a missed
-      // lower implication. At base decision level, we may learn satisfied clauses, but it's pointless.
-      // TODO check which cases call cnf translation beyond base decision level.
-      return;
-    }
-  }
+  // Hand the clause over, the adder may decline it
+  const clause_ref_t clause_ref = cnf->clause_adder->clause_add(cnf->clause_adder, lits, lits_size, tag);
 
-  // Add the clause
-  const clause_ref_t clause_ref = clause_db_new_clause(cnf->clause_db, lits, lits_size, tag);
-  ivector_push(clauses_out, clause_ref);
-  assert(clause_db_is_clause(cnf->clause_db, clause_ref, true));
-
-  // If defining a variable, remember it
-  assert(cnf->variable == variable_null || tag.type == CLAUSE_DEFINITION);
-  if (cnf->variable != variable_null) {
-    assert(tag.var == cnf->variable);
+  // If defining a variable, added to the database, then remember it
+  if (clause_ref != clause_ref_null && cnf->variable != variable_null) {
     int_lset_add(&cnf->converted, cnf->variable, clause_ref);
   }
 }
 
 static
-void cnf_convert_or(cnf_t* cnf, term_t or, ivector_t* or_clauses) {
+void cnf_convert_or(cnf_t* cnf, term_t or) {
   uint32_t i;
   composite_term_t* or_composite;
   mcsat_literal_t* or_literals;
@@ -108,21 +94,21 @@ void cnf_convert_or(cnf_t* cnf, term_t or, ivector_t* or_clauses) {
 
   or_literals[0] = literal_construct(or_tag.var, true);
   for (i = 0; i < or_composite->arity; ++ i) {
-    or_literals[i + 1] = cnf_convert(cnf, or_composite->arg[i], or_clauses);
+    or_literals[i + 1] = cnf_convert(cnf, or_composite->arg[i]);
   }
 
   cnf_begin(cnf, or_tag.var);
 
   // a => (or t1 ... tn)
   // (or !a t1 ... tn)
-  cnf_add_clause(cnf, or_literals, or_composite->arity + 1, or_clauses, or_tag);
+  cnf_add_clause(cnf, or_literals, or_composite->arity + 1, or_tag);
 
   // a <= (or t1 ... tn)
   // (a or !t1) ... (a or !tn)
   or_literals[0] = literal_construct(or_tag.var, false);
   for (i = 0; i < or_composite->arity; ++ i) {
     or_literals[1] = literal_negate(or_literals[i + 1]);
-    cnf_add_clause(cnf, or_literals, 2, or_clauses, or_tag);
+    cnf_add_clause(cnf, or_literals, 2, or_tag);
   }
 
   cnf_end(cnf);
@@ -132,7 +118,7 @@ void cnf_convert_or(cnf_t* cnf, term_t or, ivector_t* or_clauses) {
 }
 
 static
-void cnf_convert_xor(cnf_t* cnf, term_t xor, ivector_t* xor_clauses) {
+void cnf_convert_xor(cnf_t* cnf, term_t xor) {
   composite_term_t* xor_composite;
   mcsat_clause_tag_t xor_tag;
   mcsat_literal_t xor_literals[3];
@@ -158,8 +144,8 @@ void cnf_convert_xor(cnf_t* cnf, term_t xor, ivector_t* xor_clauses) {
 
   // Convert the children and setup the literals
   mcsat_literal_t xor_lit, t1_lit, t2_lit;
-  t1_lit = cnf_convert(cnf, t1, xor_clauses);
-  t2_lit = cnf_convert(cnf, t2, xor_clauses);
+  t1_lit = cnf_convert(cnf, t1);
+  t2_lit = cnf_convert(cnf, t2);
   xor_lit = literal_construct(xor_tag.var, false);
 
   cnf_begin(cnf, xor_tag.var);
@@ -171,11 +157,11 @@ void cnf_convert_xor(cnf_t* cnf, term_t xor, ivector_t* xor_clauses) {
 
   xor_literals[1] = t1_lit;
   xor_literals[2] = t2_lit;
-  cnf_add_clause(cnf, xor_literals, 3, xor_clauses, xor_tag);
+  cnf_add_clause(cnf, xor_literals, 3, xor_tag);
 
   xor_literals[1] = literal_negate(t1_lit);
   xor_literals[2] = literal_negate(t2_lit);
-  cnf_add_clause(cnf, xor_literals, 3, xor_clauses, xor_tag);
+  cnf_add_clause(cnf, xor_literals, 3, xor_tag);
 
   // a <= (xor t1 t2)
   // (a or t1 or !t2) and (a or !t1 or t2)
@@ -184,17 +170,17 @@ void cnf_convert_xor(cnf_t* cnf, term_t xor, ivector_t* xor_clauses) {
 
   xor_literals[1] = t1_lit;
   xor_literals[2] = literal_negate(t2_lit);
-  cnf_add_clause(cnf, xor_literals, 3, xor_clauses, xor_tag);
+  cnf_add_clause(cnf, xor_literals, 3, xor_tag);
 
   xor_literals[1] = literal_negate(t1_lit);
   xor_literals[2] = t2_lit;
-  cnf_add_clause(cnf, xor_literals, 3, xor_clauses, xor_tag);
+  cnf_add_clause(cnf, xor_literals, 3, xor_tag);
 
   cnf_end(cnf);
 }
 
 static
-void cnf_convert_eq(cnf_t* cnf, term_t eq, ivector_t* eq_clauses) {
+void cnf_convert_eq(cnf_t* cnf, term_t eq) {
   composite_term_t* eq_composite;
   mcsat_literal_t eq_literals[3];
   mcsat_clause_tag_t eq_tag;
@@ -210,8 +196,8 @@ void cnf_convert_eq(cnf_t* cnf, term_t eq, ivector_t* eq_clauses) {
   eq_tag.level = cnf->ctx->trail->decision_level_base;
 
   // Convert the children
-  a = cnf_convert(cnf, eq_composite->arg[0], eq_clauses);
-  b = cnf_convert(cnf, eq_composite->arg[1], eq_clauses);
+  a = cnf_convert(cnf, eq_composite->arg[0]);
+  b = cnf_convert(cnf, eq_composite->arg[1]);
 
   cnf_begin(cnf, eq_tag.var);
 
@@ -221,11 +207,11 @@ void cnf_convert_eq(cnf_t* cnf, term_t eq, ivector_t* eq_clauses) {
 
   eq_literals[1] = literal_negate(a);
   eq_literals[2] = b;
-  cnf_add_clause(cnf, eq_literals, 3, eq_clauses, eq_tag);
+  cnf_add_clause(cnf, eq_literals, 3, eq_tag);
 
   eq_literals[1] = a;
   eq_literals[2] = literal_negate(b);
-  cnf_add_clause(cnf, eq_literals, 3, eq_clauses, eq_tag);
+  cnf_add_clause(cnf, eq_literals, 3, eq_tag);
 
   // !eq => (a | b) & (!a | !b)
   // (eq | a | b) & (eq | !a | !b)
@@ -233,17 +219,17 @@ void cnf_convert_eq(cnf_t* cnf, term_t eq, ivector_t* eq_clauses) {
 
   eq_literals[1] = a;
   eq_literals[2] = b;
-  cnf_add_clause(cnf, eq_literals, 3, eq_clauses, eq_tag);
+  cnf_add_clause(cnf, eq_literals, 3, eq_tag);
 
   eq_literals[1] = literal_negate(a);
   eq_literals[2] = literal_negate(b);
-  cnf_add_clause(cnf, eq_literals, 3, eq_clauses, eq_tag);
+  cnf_add_clause(cnf, eq_literals, 3, eq_tag);
 
   cnf_end(cnf);
 }
 
 static
-void cnf_convert_ite(cnf_t* cnf, term_t ite, ivector_t* ite_clauses) {
+void cnf_convert_ite(cnf_t* cnf, term_t ite) {
   composite_term_t* ite_composite;
   mcsat_literal_t ite_literals[3];
   mcsat_clause_tag_t ite_tag;
@@ -259,9 +245,9 @@ void cnf_convert_ite(cnf_t* cnf, term_t ite, ivector_t* ite_clauses) {
   ite_tag.level = cnf->ctx->trail->decision_level_base;
 
   // Convert the children
-  cond = cnf_convert(cnf, ite_composite->arg[0], ite_clauses);
-  b_true= cnf_convert(cnf, ite_composite->arg[1], ite_clauses);
-  b_false = cnf_convert(cnf, ite_composite->arg[2], ite_clauses);
+  cond = cnf_convert(cnf, ite_composite->arg[0]);
+  b_true= cnf_convert(cnf, ite_composite->arg[1]);
+  b_false = cnf_convert(cnf, ite_composite->arg[2]);
 
   cnf_begin(cnf, ite_tag.var);
 
@@ -273,15 +259,15 @@ void cnf_convert_ite(cnf_t* cnf, term_t ite, ivector_t* ite_clauses) {
 
   ite_literals[1] = b_true;
   ite_literals[2] = b_false;
-  cnf_add_clause(cnf, ite_literals, 3, ite_clauses, ite_tag);
+  cnf_add_clause(cnf, ite_literals, 3, ite_tag);
 
   ite_literals[1] = literal_negate(cond);
   ite_literals[2] = b_true;
-  cnf_add_clause(cnf, ite_literals, 3, ite_clauses, ite_tag);
+  cnf_add_clause(cnf, ite_literals, 3, ite_tag);
 
   ite_literals[1] = cond;
   ite_literals[2] = b_false;
-  cnf_add_clause(cnf, ite_literals, 3, ite_clauses, ite_tag);
+  cnf_add_clause(cnf, ite_literals, 3, ite_tag);
 
   // !ite => !(ite cond b_true b_false)
   // !ite => (!b_true | !b_false) & (cond => !b_true) & (!cond -> !b_false)
@@ -292,20 +278,20 @@ void cnf_convert_ite(cnf_t* cnf, term_t ite, ivector_t* ite_clauses) {
 
   ite_literals[1] = literal_negate(b_true);
   ite_literals[2] = literal_negate(b_false);
-  cnf_add_clause(cnf, ite_literals, 3, ite_clauses, ite_tag);
+  cnf_add_clause(cnf, ite_literals, 3, ite_tag);
 
   ite_literals[1] = literal_negate(cond);
   ite_literals[2] = literal_negate(b_true);
-  cnf_add_clause(cnf, ite_literals, 3, ite_clauses, ite_tag);
+  cnf_add_clause(cnf, ite_literals, 3, ite_tag);
 
   ite_literals[1] = cond;
   ite_literals[2] = literal_negate(b_false);
-  cnf_add_clause(cnf, ite_literals, 3, ite_clauses, ite_tag);
+  cnf_add_clause(cnf, ite_literals, 3, ite_tag);
 
   cnf_end(cnf);
 }
 
-mcsat_literal_t cnf_convert(cnf_t* cnf, term_t t, ivector_t* t_clauses) {
+mcsat_literal_t cnf_convert(cnf_t* cnf, term_t t) {
   bool t_negated;
   term_kind_t t_kind;
   mcsat_literal_t t_lit;
@@ -327,22 +313,22 @@ mcsat_literal_t cnf_convert(cnf_t* cnf, term_t t, ivector_t* t_clauses) {
     t_kind = term_kind(cnf->ctx->terms, t);
     switch (t_kind) {
     case OR_TERM:
-      cnf_convert_or(cnf, t, t_clauses);
+      cnf_convert_or(cnf, t);
       break;
     case XOR_TERM:
-      cnf_convert_xor(cnf, t, t_clauses);
+      cnf_convert_xor(cnf, t);
       break;
     case EQ_TERM: {
       term_t lhs = eq_term_desc(cnf->ctx->terms, t)->arg[0];
       type_kind_t lhs_type = term_type_kind(cnf->ctx->terms, lhs);
       if (lhs_type == BOOL_TYPE) {
-        cnf_convert_eq(cnf, t, t_clauses);
+        cnf_convert_eq(cnf, t);
       }
       break;
     }
     case ITE_TERM:
     case ITE_SPECIAL:
-      cnf_convert_ite(cnf, t, t_clauses);
+      cnf_convert_ite(cnf, t);
       break;
     default:
       // We're fine, just a variable
@@ -353,7 +339,7 @@ mcsat_literal_t cnf_convert(cnf_t* cnf, term_t t, ivector_t* t_clauses) {
   return t_lit;
 }
 
-void cnf_convert_lemma(cnf_t* cnf, const ivector_t* lemma, ivector_t* clauses) {
+void cnf_convert_lemma(cnf_t* cnf, const ivector_t* lemma) {
   uint32_t i;
   mcsat_literal_t* or_literals;
   mcsat_clause_tag_t or_tag;
@@ -361,14 +347,14 @@ void cnf_convert_lemma(cnf_t* cnf, const ivector_t* lemma, ivector_t* clauses) {
   or_literals = safe_malloc(sizeof(mcsat_literal_t) * lemma->size);
 
   for (i = 0; i < lemma->size; ++ i) {
-    or_literals[i] = cnf_convert(cnf, lemma->data[i], clauses);
+    or_literals[i] = cnf_convert(cnf, lemma->data[i]);
   }
 
   or_tag.type = CLAUSE_LEMMA;
   or_tag.score = 0;
   or_tag.level = cnf->ctx->trail->decision_level_base;
 
-  cnf_add_clause(cnf, or_literals, lemma->size, clauses, or_tag);
+  cnf_add_clause(cnf, or_literals, lemma->size, or_tag);
 
   safe_free(or_literals);
 }
@@ -385,7 +371,6 @@ bool cnf_get_clauses(cnf_t* cnf, variable_t var, ivector_t* clauses) {
   int_lset_iterator_construct(&it, &cnf->converted, var);
   while (!int_lset_iterator_done(&it)) {
     clause_ref = *int_lset_iterator_get(&it);
-    assert(clause_db_is_clause(cnf->clause_db, clause_ref, true));
     ivector_push(clauses, clause_ref);
     int_lset_iterator_next_and_keep(&it);
   }
@@ -419,7 +404,6 @@ void cnf_gc_mark(cnf_t* cnf, gc_info_t* gc_clauses, const gc_info_t* gc_vars) {
       int_lset_iterator_construct(&it, &cnf->converted, var);
       while (!int_lset_iterator_done(&it)) {
         clause_ref = *int_lset_iterator_get(&it);
-        assert(clause_db_is_clause(cnf->clause_db, clause_ref, true));
         gc_info_mark(gc_clauses, clause_ref);
         int_lset_iterator_next_and_keep(&it);
       }

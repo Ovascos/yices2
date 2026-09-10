@@ -29,7 +29,16 @@
 
 #include <math.h>
 
+typedef struct bool_plugin_s bool_plugin_t;
+
 typedef struct {
+  /** The interface, must be the first entry. */
+  clause_adder_interface_t clause_adder_interface;
+  /** The plugin */
+  bool_plugin_t* bp;
+} bool_plugin_clause_adder_t;
+
+struct bool_plugin_s {
 
   /** The plugin interface */
   plugin_t plugin_interface;
@@ -39,6 +48,9 @@ typedef struct {
 
   /** The clause database */
   clause_db_t clause_db;
+
+  /** Takes the clauses of the CNF converter into the database */
+  bool_plugin_clause_adder_t clause_adder;
 
   /** The CNF converter */
   cnf_t cnf;
@@ -118,7 +130,7 @@ typedef struct {
   /** Exception handler */
   jmp_buf* exception;
 
-} bool_plugin_t;
+};
 
 static
 void bool_plugin_stats_init(bool_plugin_t* bp) {
@@ -144,13 +156,42 @@ void bool_plugin_heuristics_init(bool_plugin_t* bp) {
 }
 
 static
+clause_ref_t bool_plugin_clause_add(clause_adder_interface_t* self, const mcsat_literal_t* lits, uint32_t lits_size, mcsat_clause_tag_t tag) {
+  bool_plugin_t* bp = ((bool_plugin_clause_adder_t*) self)->bp;
+
+  for (uint32_t i = 0; i < lits_size; ++ i) {
+    if (literal_has_value(lits[i], bp->ctx->trail) &&
+        literal_get_value(lits[i], bp->ctx->trail)) {
+      // true literal, true clause
+      // don't take it in NCB, as adding satisfied clauses in NCB beyond base level may cause a missed
+      // lower implication. At base decision level, we may learn satisfied clauses, but it's pointless.
+      // TODO check which cases call cnf translation beyond base decision level.
+      return clause_ref_null;
+    }
+  }
+
+  const clause_ref_t clause_ref = clause_db_new_clause(&bp->clause_db, lits, lits_size, tag);
+  assert(clause_db_is_clause(&bp->clause_db, clause_ref, true));
+  ivector_push(&bp->clauses_to_add, clause_ref);
+
+  return clause_ref;
+}
+
+static
+void bool_plugin_clause_adder_construct(bool_plugin_clause_adder_t* adder, bool_plugin_t* bp) {
+  adder->clause_adder_interface.clause_add = bool_plugin_clause_add;
+  adder->bp = bp;
+}
+
+static
 void bool_plugin_construct(plugin_t* plugin, plugin_context_t* ctx) {
   bool_plugin_t* bp = (bool_plugin_t*) plugin;
 
   bp->ctx = ctx;
   clause_db_construct(&bp->clause_db, ctx->var_db);
-  cnf_construct(&bp->cnf, ctx, &bp->clause_db);
   init_ivector(&bp->clauses_to_add, 0);
+  bool_plugin_clause_adder_construct(&bp->clause_adder, bp);
+  cnf_construct(&bp->cnf, ctx, &bp->clause_adder.clause_adder_interface);
   init_ivector(&bp->clauses, 0);
   init_ivector(&bp->lemmas, 0);
   bcp_watch_manager_construct(&bp->wlm);
@@ -216,7 +257,7 @@ void bool_plugin_new_term_notify(plugin_t* plugin, term_t term, trail_token_t* p
   }
 
   // Convert to CNF
-  cnf_convert(&bp->cnf, term, &bp->clauses_to_add);
+  cnf_convert(&bp->cnf, term);
 
   // Variable to the watch list manager
   assert(variable_db_has_variable(bp->ctx->var_db, term));
@@ -238,7 +279,7 @@ void bool_plugin_new_lemma_notify(plugin_t* plugin, ivector_t* lemma, trail_toke
 
   // Convert to CNF
   uint32_t i = bp->clauses_to_add.size;
-  cnf_convert_lemma(&bp->cnf, lemma, &bp->clauses_to_add);
+  cnf_convert_lemma(&bp->cnf, lemma);
 
   // Remember the lemma clauses
   for (; i < bp->clauses_to_add.size; ++ i) {
