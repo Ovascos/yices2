@@ -20,7 +20,8 @@
 #define MCSAT_CONFLICT_H_
 
 #include "mcsat/trail.h"
-#include "mcsat/variable_db.h"
+#include "mcsat/variable.h"
+#include "mcsat/utils/int_mset.h"
 
 #include "utils/int_hash_map.h"
 #include "utils/int_hash_sets.h"
