@@ -15,22 +15,16 @@
  * You should have received a copy of the GNU General Public License
  * along with Yices.  If not, see <http://www.gnu.org/licenses/>.
  */
- 
-#ifndef BOOL_PLUGIN_TYPES_H_
-#define BOOL_PLUGIN_TYPES_H_
+
+#ifndef MCSAT_VARIABLE_H_
+#define MCSAT_VARIABLE_H_
 
 #include <stdint.h>
 
-/** Literal is just a variable that might be negated */
-typedef int32_t mcsat_literal_t;
+/** Type of variable */
+typedef int32_t variable_t;
 
-/** Null literal */
-#define mcsat_literal_null 0
+/** Null variable */
+#define variable_null 0
 
-/** Type of clause references */
-typedef int32_t clause_ref_t;
-
-/** Null clause */
-#define clause_ref_null 0
-
-#endif /* BOOL_PLUGIN_TYPES_H_ */
+#endif //MCSAT_VARIABLE_H_
