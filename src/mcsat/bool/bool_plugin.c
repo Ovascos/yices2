@@ -482,16 +482,17 @@ void bool_plugin_set_reason_ref(bool_plugin_t* bp, variable_t x, clause_ref_t re
 }
 
 /**
- * Propagate the literal and remember any needed information.
+ * Propagate the literal at the given level and remember any needed information.
  */
-static inline
-void bool_plugin_propagate_literal(bool_plugin_t* bp, mcsat_literal_t l, trail_token_t* prop, clause_ref_t cref) {
+static
+void bool_plugin_propagate_literal(bool_plugin_t* bp, mcsat_literal_t l, trail_token_t* prop, clause_ref_t cref, uint32_t level) {
   assert(cref != clause_ref_null);
   assert(!literal_has_value(l, bp->ctx->trail));
+  assert(level <= bp->ctx->trail->decision_level);
 
   (*bp->stats.propagations) ++;
 
-  literal_set_value(l, prop);
+  literal_set_value_at_level(l, prop, level);
 
   const variable_t x = literal_get_variable(l);
   ivector_push(&bp->propagated, x);
@@ -531,27 +532,25 @@ const mcsat_clause_t* bool_plugin_get_reason(bool_plugin_t* bp, variable_t x) {
 static
 void bool_plugin_add_new_clauses(bool_plugin_t* bp, trail_token_t* prop) {
   // Attach all the clauses
+  const uint32_t base_lvl = bp->ctx->trail->decision_level_base;
+  const uint32_t dec_lvl = bp->ctx->trail->decision_level;
   for (uint32_t i = 0; i < bp->clauses_to_add.size; ++ i) {
     // Get the clause and attach it
     const clause_ref_t c_ref = bp->clauses_to_add.data[i];
-    const int propagation_level = bool_plugin_attach_clause(bp, c_ref, prop);
+    const int prop_lvl = bool_plugin_attach_clause(bp, c_ref, prop);
 
-    if (propagation_level >= 0) {
+    if (prop_lvl >= 0) {
       const mcsat_clause_t* c = clause_db_get_clause(&bp->clause_db, c_ref);
-      // Then a unit clause is not watched. It is not used in the clause_to_propagate. It is assigned due to the propagation, but at what level?
-      // TODO why do we keep the clauses_to_propagate if we're never ever using it except of GC?
-      // If the clause propagates at current level, just propagate it
-      assert(propagation_level <= bp->ctx->trail->decision_level);
-      if (propagation_level == bp->ctx->trail->decision_level) {
-        bool_plugin_propagate_literal(bp, c->literals[0], prop, c_ref);
-      } else {
-        // Propagates at lower level (this happens with assumptions and unit clauses)
-        // currently, we don't do any special handling in this case, we should though
-        bool_plugin_propagate_literal(bp, c->literals[0], prop, c_ref);
-      }
+      // A unit clause is not watched, so this is the only place it propagates.
+      // The clause may propagate below the current level (assumptions and unit
+      // clauses), but we still assign at the current one.
+      // TODO for CB: pass propagation_level here. The trail then keeps the value
+      // across a pop and repropagates it, while bool_plugin_pop() drops the
+      // reason of every variable propagated in the popped scope.
+      assert(prop_lvl <= dec_lvl);
+      bool_plugin_propagate_literal(bp, c->literals[0], prop, c_ref, prop_lvl == base_lvl ? base_lvl : dec_lvl);
     }
   }
-
   // Done with the clause, reset
   ivector_reset(&bp->clauses_to_add);
 }
@@ -616,7 +615,7 @@ void bool_plugin_propagate(plugin_t* plugin, trail_token_t* prop) {
         if (literal_is_false(it_w->blocker, trail)) {
           bool_plugin_report_conflict(bp, prop, it_w->cref);
         } else {
-          bool_plugin_propagate_literal(bp, it_w->blocker, prop, it_w->cref);
+          bool_plugin_propagate_literal(bp, it_w->blocker, prop, it_w->cref, trail->decision_level);
         }
         bcp_remove_iterator_next_and_keep(&it);
         continue;
@@ -683,7 +682,7 @@ void bool_plugin_propagate(plugin_t* plugin, trail_token_t* prop) {
           assert(literal_is_false(lit, trail));
           bool_plugin_report_conflict(bp, prop, it_w->cref);
         } else {
-          bool_plugin_propagate_literal(bp, lit, prop, it_w->cref);
+          bool_plugin_propagate_literal(bp, lit, prop, it_w->cref, trail->decision_level);
         }
         // Keep the watch
         bcp_remove_iterator_next_and_keep(&it);
@@ -905,7 +904,7 @@ void bool_plugin_gc_mark(plugin_t* plugin, gc_info_t* gc_vars) {
     int_array_sort2(bp->lemmas.data, bp->lemmas.size, (void*) db, bool_plugin_clause_compare_for_removal);
 
     // avg activity score
-    const float act_threshold = bp->heuristic_params.clause_score_bump_factor / bp->lemmas.size;
+    const float act_threshold = bp->heuristic_params.clause_score_bump_factor / (float)bp->lemmas.size;
 
     // Mark all the variables in half of lemmas as used
     for (uint32_t i = 0; i < bp->lemmas.size / 2; ++ i) {
