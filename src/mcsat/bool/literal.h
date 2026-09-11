@@ -132,4 +132,13 @@ void literal_set_value(mcsat_literal_t l, trail_token_t* token) {
   token->add(token, l_var, l_negated ? &mcsat_value_false : &mcsat_value_true);
 }
 
+/** Set the value of the literal at the given level (at most the current one) */
+static inline
+void literal_set_value_at_level(mcsat_literal_t l, trail_token_t* token, uint32_t level) {
+  const variable_t l_var = literal_get_variable(l);
+  const bool l_negated = literal_is_negated(l);
+
+  token->add_at_level(token, l_var, l_negated ? &mcsat_value_false : &mcsat_value_true, level);
+}
+
 #endif /* MCSAT_LITERAL_H_ */
