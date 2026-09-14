@@ -1035,8 +1035,8 @@ bool eq_graph_merge_preference(const eq_node_t* n1, const eq_node_t* n2) {
     return true;
   }
 
-  // Otherwise we prefer a biger one (so that we update less nodes)
-  return n1->size < n2->size;
+  // Otherwise we prefer a bigger one (so that we update less nodes)
+  return n1->size > n2->size;
 }
 
 /** Allocate a new edge */
