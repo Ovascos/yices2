@@ -29,6 +29,7 @@
 #include "solvers/quant/ef_parameters.h"
 #include "utils/int_vectors.h"
 #include "api/search_parameters.h"
+#include "mcsat/options.h"
 #include "terms/rationals.h"
 
 /*
@@ -114,6 +115,7 @@ typedef enum yices_param {
   PARAM_EMATCH_TERM_EPSILON,
   PARAM_EMATCH_TERM_ALPHA,
   // mcsat options
+  PARAM_MCSAT_BACKTRACK,
   PARAM_MCSAT_RAND_DEC_FREQ,
   PARAM_MCSAT_RAND_DEC_SEED,
   PARAM_MCSAT_NA_MGCD,
@@ -170,6 +172,7 @@ extern const char *param2string[];
 extern const char *branching2string[];
 extern const char *efgen2string[];
 extern const char *ematchmode2string[];
+extern const char *mcsatbacktrack2string[];
 
 
 /*
@@ -215,6 +218,20 @@ extern bool param_val_to_branching(const char *name, const param_val_t *v, branc
  * - allowed modes are "both" and "final-only"
  */
 extern bool param_val_to_mcsat_supplement_check(const char *name, const param_val_t *v, mcsat_supplement_check_t *value, char **reason);
+
+/*
+ * MCSAT backtracking mode
+ * - allowed modes are "ncb" and "rscb"
+ */
+extern bool param_val_to_mcsat_backtrack(const char *name, const param_val_t *v, mcsat_backtrack_t *value, char **reason);
+
+/*
+ * Test whether an MCSAT backtracking mode is known and supported.
+ * - mode = backtracking mode to use
+ * - return the mode (as a positive integer) if this mode is supported
+ * - return -1 otherwise
+ */
+extern int32_t supported_mcsat_backtrack_mode(const char *mode);
 
 /*
  * EF generalization mode
