@@ -5493,6 +5493,10 @@ static bool yices_get_option(smt2_globals_t *g, yices_param_t p) {
     print_int32_value(g->mcsat_options.bv_var_size);
     break;
 
+  case PARAM_MCSAT_BACKTRACK:
+    print_string_value(mcsatbacktrack2string[g->mcsat_options.backtrack]);
+    break;
+
   case PARAM_MCSAT_L2O:
     print_boolean_value(g->mcsat_options.l2o);
     break;
@@ -5815,6 +5819,7 @@ static void yices_set_option(smt2_globals_t *g, const char *param, const param_v
   double x;
   branch_t b;
   ef_gen_option_t gen;
+  mcsat_backtrack_t backtrack;
   ivector_t* terms;
   char* reason;
   context_t *context;
@@ -6330,6 +6335,16 @@ static void yices_set_option(smt2_globals_t *g, const char *param, const param_v
       context = g->ctx;
       if (context != NULL) {
         context->mcsat_options.partial_restart = tt;
+      }
+    }
+    break;
+
+  case PARAM_MCSAT_BACKTRACK:
+    if (param_val_to_mcsat_backtrack(param, val, &backtrack, &reason)) {
+      g->mcsat_options.backtrack = backtrack;
+      context = g->ctx;
+      if (context != NULL) {
+        context->mcsat_options.backtrack = backtrack;
       }
     }
     break;

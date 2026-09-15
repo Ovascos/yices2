@@ -120,6 +120,7 @@ static int32_t mcsat_na_bound_min;
 static int32_t mcsat_na_bound_max;
 static int32_t mcsat_bv_var_size;
 static bool mcsat_partial_restart;
+static int32_t mcsat_backtrack;
 
 static pvector_t trace_tags;
 
@@ -179,6 +180,7 @@ typedef enum optid {
   mcsat_na_bound_max_opt, // set maximal bound
   mcsat_bv_var_size_opt,   // set size of bitvector variables
   mcsat_partial_restart_opt, // enable partial restart heuristic in MCSAT
+  mcsat_backtrack_opt,     // set the backtracking mode
   trace_opt,               // enable a trace tag
   show_ef_help_opt,        // print help about the ef options
   ematch_en_opt,                    // enable ematching
@@ -233,6 +235,7 @@ static option_desc_t options[NUM_OPTIONS] = {
   { "mcsat-na-bound-max", '\0', MANDATORY_INT, mcsat_na_bound_max_opt },
   { "mcsat-bv-var-size", '\0', MANDATORY_INT, mcsat_bv_var_size_opt },
   { "mcsat-partial-restart", '\0', FLAG_OPTION, mcsat_partial_restart_opt },
+  { "mcsat-backtrack", '\0', MANDATORY_STRING, mcsat_backtrack_opt },
   { "trace", 't', MANDATORY_STRING, trace_opt },
   { "ef-help", '0', FLAG_OPTION, show_ef_help_opt },
   { "ematch", '\0', FLAG_OPTION, ematch_en_opt },
@@ -316,7 +319,8 @@ static void print_mcsat_help(const char *progname) {
          "    --mcsat-na-bound-min=<B> Set initial lower bound\n"
          "    --mcsat-na-bound-max=<B> Set maximal bound for search\n"
          "    --mcsat-bv-var-size=<B>   Set size of bit-vector variables in MCSAT search\n"
-         "    --mcsat-partial-restart   Enable partial restart heuristic in MCSAT search"
+         "    --mcsat-partial-restart   Enable partial restart heuristic in MCSAT search\n"
+         "    --mcsat-backtrack=<M>     Set the backtracking mode (can be ncb, rscb) (default: ncb)\n"
          "\n");
   fflush(stdout);
 }
@@ -421,6 +425,7 @@ static void parse_command_line(int argc, char *argv[]) {
   mcsat_na_bound_max = -1;
   mcsat_bv_var_size = -1;
   mcsat_partial_restart = false;
+  mcsat_backtrack = -1;
 
   init_pvector(&trace_tags, 5);
 
@@ -628,6 +633,14 @@ static void parse_command_line(int argc, char *argv[]) {
 
       case mcsat_partial_restart_opt:
         mcsat_partial_restart = true;
+        break;
+
+      case mcsat_backtrack_opt:
+        mcsat_backtrack = supported_mcsat_backtrack_mode(elem.s_value);
+        if (mcsat_backtrack < 0) {
+          fprintf(stderr, "%s: unsupported mcsat backtracking mode: %s\n", parser.command_name, elem.s_value);
+          goto bad_usage;
+        }
         break;
 
       case show_ef_help_opt:
@@ -870,6 +883,13 @@ static void setup_options_mcsat(void) {
 
   if (mcsat_partial_restart) {
     smt2_set_option(":yices-mcsat-partial-restart", aval_true);
+  }
+
+  if (mcsat_backtrack >= 0) {
+    aval_t aval_backtrack;
+    aval_backtrack = attr_vtbl_symbol(__smt2_globals.avtbl,
+                                      mcsatbacktrack2string[mcsat_backtrack]);
+    smt2_set_option(":yices-mcsat-backtrack", aval_backtrack);
   }
 }
 

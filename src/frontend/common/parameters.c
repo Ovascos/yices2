@@ -82,6 +82,7 @@ static const char * const param_names[NUM_PARAMETERS] = {
   "max-extensionality",
   "max-interface-eqs",
   "max-update-conflicts",
+  "mcsat-backtrack",
   "mcsat-bv-var-size",
   "mcsat-l2o",
   "mcsat-na-bound",
@@ -159,6 +160,7 @@ static const yices_param_t param_code[NUM_PARAMETERS] = {
   PARAM_MAX_EXTENSIONALITY,
   PARAM_MAX_INTERFACE_EQS,
   PARAM_MAX_UPDATE_CONFLICTS,
+  PARAM_MCSAT_BACKTRACK,
   PARAM_MCSAT_BV_VAR_SIZE,
   PARAM_MCSAT_L2O,
   PARAM_MCSAT_NA_BOUND,
@@ -224,6 +226,18 @@ static const mcsat_supplement_check_t mcsat_supplement_check_code[NUM_MCSAT_SUPP
   MCSAT_SUPPLEMENT_CHECK_FINAL_ONLY,
 };
 
+/*
+ * Names of the MCSAT backtracking modes (in lexicographic order)
+ */
+static const char * const mcsat_backtrack_modes[NUM_MCSAT_BACKTRACK_MODES] = {
+  "ncb",
+  "rscb",
+};
+
+static const mcsat_backtrack_t mcsat_backtrack_code[NUM_MCSAT_BACKTRACK_MODES] = {
+  MCSAT_BACKTRACK_NCB,
+  MCSAT_BACKTRACK_RSCB,
+};
 
 
 /*
@@ -274,6 +288,7 @@ const char *param2string[NUM_PARAMETERS];
 const char *branching2string[NUM_BRANCHING_MODES];
 const char *efgen2string[NUM_EF_GEN_MODES];
 const char *ematchmode2string[NUM_EMATCH_MODES];
+const char *mcsatbacktrack2string[NUM_MCSAT_BACKTRACK_MODES];
 
 
 /*
@@ -307,6 +322,12 @@ void init_parameter_name_table(void) {
     name = ematch_modes[i];
     j = ematch_mode_code[i];
     ematchmode2string[j] = name;
+  }
+
+  for (i=0; i<NUM_MCSAT_BACKTRACK_MODES; i++) {
+    name = mcsat_backtrack_modes[i];
+    j = mcsat_backtrack_code[i];
+    mcsatbacktrack2string[j] = name;
   }
 }
 
@@ -491,6 +512,44 @@ bool param_val_to_mcsat_supplement_check(const char *name, const param_val_t *v,
   *reason = "must be one of 'both' 'final-only'";
 
   return false;
+}
+
+
+/*
+ * MCSAT backtracking mode
+ * - allowed modes are "ncb" and "rscb"
+ */
+bool param_val_to_mcsat_backtrack(const char *name, const param_val_t *v,
+                                  mcsat_backtrack_t *value, char **reason) {
+  if (v->tag == PARAM_VAL_SYMBOL) {
+    int32_t i = binary_search_string(v->val.symbol, mcsat_backtrack_modes,
+                                     NUM_MCSAT_BACKTRACK_MODES);
+    if (i >= 0) {
+      assert(i < NUM_MCSAT_BACKTRACK_MODES);
+      *value = mcsat_backtrack_code[i];
+      return true;
+    }
+  }
+  *reason = "must be one of 'ncb' 'rscb'";
+
+  return false;
+}
+
+
+/*
+ * Test whether an MCSAT backtracking mode is known and supported.
+ * - mode = backtracking mode to use
+ * - return the mode (as a positive integer) if this mode is supported
+ * - return -1 otherwise
+ */
+int32_t supported_mcsat_backtrack_mode(const char *mode) {
+  int32_t i = binary_search_string(mode, mcsat_backtrack_modes, NUM_MCSAT_BACKTRACK_MODES);
+  if (i >= 0) {
+    assert(i < NUM_MCSAT_BACKTRACK_MODES);
+    return mcsat_backtrack_code[i];
+  }
+
+  return -1;
 }
 
 
