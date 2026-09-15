@@ -116,6 +116,9 @@ typedef struct {
   /** Stuff added to eq_graph */
   ivector_t eq_graph_addition_trail;
 
+  /** Terms equal to a value in the e-graph, published on the next propagate (pop adds its re-evaluations) */
+  ivector_t propagated_terms;
+
   /** Weak Equality graph for array reasoning */
   weq_graph_t weq_graph;
 
@@ -1679,6 +1682,7 @@ void uf_plugin_construct(plugin_t* plugin, plugin_context_t* ctx) {
   // Equality graph
   eq_graph_construct(&uf->eq_graph, ctx, "uf");
   init_ivector(&uf->eq_graph_addition_trail, 0);
+  init_ivector(&uf->propagated_terms, 0);
 
   // Weak Equality graph
   weq_graph_construct(&uf->weq_graph, ctx, &uf->eq_graph);
@@ -1711,67 +1715,74 @@ void uf_plugin_destruct(plugin_t* plugin) {
 
   eq_graph_destruct(&uf->eq_graph);
   delete_ivector(&uf->eq_graph_addition_trail);
+  delete_ivector(&uf->propagated_terms);
 
   weq_graph_destruct(&uf->weq_graph);
 }
 
+/**
+ * To decide whether we are propagating the term t on the trail with this plugin.
+ */
+static
+variable_t uf_plugin_publishable_variable(const uf_plugin_t* uf, term_t t) {
+  if (t == true_term || t == false_term) {
+    return variable_null;
+  }
+  const term_t t_pos = unsigned_term(t);
+  const variable_t t_var = variable_db_get_variable_if_exists(uf->ctx->var_db, t_pos);
+  if (t_var == variable_null || trail_has_value(uf->ctx->trail, t_var)) {
+    return variable_null;
+  }
+  const type_kind_t kind = term_type_kind(uf->ctx->terms, t_pos);
+  if (kind != UNINTERPRETED_TYPE && kind != FUNCTION_TYPE && kind != BOOL_TYPE) {
+    return variable_null;
+  }
+  return t_var;
+}
+
 static
 bool uf_plugin_process_eq_graph_propagations(uf_plugin_t* uf, trail_token_t* prop) {
-  bool propagated = false;
-  // Process any propagated terms
-  if (eq_graph_has_propagated_terms(&uf->eq_graph)) {
-    uint32_t i = 0;
-    ivector_t eq_propagations;
-    init_ivector(&eq_propagations, 0);
-    eq_graph_get_propagated_terms(&uf->eq_graph, &eq_propagations);
-    for (; i < eq_propagations.size; ++ i) {
-      // Term to propagate
-      term_t t = eq_propagations.data[i];
-      term_t t_atom;
-      // Variable to propagate
-      variable_t t_var;
-
-      if (t == true_term || t == false_term) {
-        continue;
-      }
-
-      t_atom = unsigned_term(t);
-      t_var = variable_db_get_variable_if_exists(uf->ctx->var_db, t_atom);
-      if (t_var != variable_null) {
-        // Only set values of uninterpreted, function and boolean type
-        type_kind_t t_type_kind = term_type_kind(uf->ctx->terms, t_atom);
-        if (t_type_kind == UNINTERPRETED_TYPE ||
-            t_type_kind == FUNCTION_TYPE ||
-            t_type_kind == BOOL_TYPE) {
-          const mcsat_value_t* v = eq_graph_get_propagated_term_value(&uf->eq_graph, t);
-          mcsat_value_t atom_value;
-          if (t_atom != t) {
-            assert(v->type == VALUE_BOOLEAN);
-            mcsat_value_construct_bool(&atom_value, !v->b);
-            v = &atom_value;
-          }
-          if (!trail_has_value(uf->ctx->trail, t_var)) {
-            if (ctx_trace_enabled(uf->ctx, "mcsat::eq::propagate")) {
-              FILE* out = ctx_trace_out(uf->ctx);
-              ctx_trace_term(uf->ctx, t_atom);
-              fprintf(out, " -> ");
-              mcsat_value_print(v, out);
-              fprintf(out, "\n");
-            }
-            
-            prop->add(prop, t_var, v);
-            (*uf->stats.propagations) ++;
-
-            propagated = true;
-          } else {
-            // Ignore, we will report conflict
-          }
-        }
-      }
-    }
-    delete_ivector(&eq_propagations);
+  if (!eq_graph_has_propagated_terms(&uf->eq_graph) && uf->propagated_terms.size == 0) {
+    return false;
   }
 
+  // New propagations join the terms re-evaluated on pop
+  bool propagated = false;
+  eq_graph_get_propagated_terms(&uf->eq_graph, &uf->propagated_terms);
+  for (uint32_t i = 0; i < uf->propagated_terms.size; ++ i) {
+    // Term to propagate
+    term_t t = uf->propagated_terms.data[i];
+    // A term re-evaluated on pop may have lost its e-graph value since
+    if (!eq_graph_has_term(&uf->eq_graph, t) || !eq_graph_has_propagated_term_value(&uf->eq_graph, t)) {
+      continue;
+    }
+    // Variable to propagate
+    variable_t t_var = uf_plugin_publishable_variable(uf, t);
+    if (t_var == variable_null) {
+      continue;
+    }
+
+    term_t t_atom = unsigned_term(t);
+    const mcsat_value_t* v = eq_graph_get_propagated_term_value(&uf->eq_graph, t);
+    mcsat_value_t atom_value;
+    if (t_atom != t) {
+      assert(v->type == VALUE_BOOLEAN);
+      mcsat_value_construct_bool(&atom_value, !v->b);
+      v = &atom_value;
+    }
+    if (ctx_trace_enabled(uf->ctx, "mcsat::eq::propagate")) {
+      FILE* out = ctx_trace_out(uf->ctx);
+      ctx_trace_term(uf->ctx, t_atom);
+      fprintf(out, " -> ");
+      mcsat_value_print(v, out);
+      fprintf(out, "\n");
+    }
+    prop->add(prop, t_var, v);
+    (*uf->stats.propagations) ++;
+    propagated = true;
+  }
+
+  ivector_reset(&uf->propagated_terms);
   return propagated;
 }
 
@@ -2078,8 +2089,8 @@ void uf_plugin_pop(plugin_t* plugin) {
     term_t t = uf->eq_graph_addition_trail.data[i];
     uf_plugin_add_to_eq_graph(uf, t, false);
   }
-  // We've already processed all the propagations, so we just reset it
-  eq_graph_get_propagated_terms(&uf->eq_graph, NULL);
+  // The trail values of these evaluations were popped, publish them again
+  eq_graph_get_propagated_terms(&uf->eq_graph, &uf->propagated_terms);
 
   // Clear the conflict
   ivector_reset(&uf->conflict);
