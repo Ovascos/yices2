@@ -31,4 +31,5 @@ extern void init_mcsat_options(mcsat_options_t *opts) {
   opts->partial_restart = false;
   opts->check_model = false;
   opts->l2o = false;
+  opts->backtrack = MCSAT_BACKTRACK_NCB;
 }
