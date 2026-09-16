@@ -324,13 +324,17 @@ void feasible_set_db_push(feasible_set_db_t* db) {
 }
 
 void feasible_set_db_pop(feasible_set_db_t* db) {
+  feasible_set_db_pop_n(db, 1);
+}
+
+void feasible_set_db_pop_n(feasible_set_db_t* db, uint32_t n) {
 
   if (ctx_trace_enabled(db->plugin->ctx, "na::feasible_set_db")) {
     fprintf(ctx_trace_out(db->plugin->ctx), "feasible_set_db_pop");
     feasible_set_db_print(db, ctx_trace_out(db->plugin->ctx));
   }
 
-  scope_holder_pop(&db->scope,
+  scope_holder_pop_n(&db->scope, n,
       &db->updates_size,
       &db->fixed_variable_size,
       &db->fixed_variables_i,

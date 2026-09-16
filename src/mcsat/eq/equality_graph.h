@@ -305,8 +305,8 @@ bool eq_graph_term_is_rep(const eq_graph_t* eq, term_t t);
 /** Push the context */
 void eq_graph_push(eq_graph_t* eq);
 
-/** Pop the context */
-void eq_graph_pop(eq_graph_t* eq);
+/** Pop the context n times */
+void eq_graph_pop(eq_graph_t* eq, uint32_t n);
 
 /** Print the equality graph */
 void eq_graph_print(const eq_graph_t* eq, FILE* out);

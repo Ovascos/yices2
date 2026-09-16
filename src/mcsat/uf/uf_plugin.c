@@ -2066,7 +2066,7 @@ void uf_plugin_push(plugin_t* plugin) {
 }
 
 static
-void uf_plugin_pop(plugin_t* plugin) {
+void uf_plugin_pop(plugin_t* plugin, uint32_t n) {
   uf_plugin_t* uf = (uf_plugin_t*) plugin;
 
   uint32_t old_eq_graph_addition_trail_size, old_fun_diseq_entries_size;
@@ -2074,15 +2074,15 @@ void uf_plugin_pop(plugin_t* plugin) {
   uint32_t old_fun_diseq_trail_scan_index;
 
   // Pop the int variable values
-  scope_holder_pop(&uf->scope,
-                   &old_eq_graph_addition_trail_size,
-                   &old_fun_diseq_entries_size,
-                   &old_fun_model_diseq_entries_size,
-                   &old_fun_diseq_trail_scan_index,
-                   NULL);
+  scope_holder_pop_n(&uf->scope, n,
+                     &old_eq_graph_addition_trail_size,
+                     &old_fun_diseq_entries_size,
+                     &old_fun_model_diseq_entries_size,
+                     &old_fun_diseq_trail_scan_index,
+                     NULL);
 
-  weq_graph_pop(&uf->weq_graph);
-  eq_graph_pop(&uf->eq_graph);
+  weq_graph_pop(&uf->weq_graph, n);
+  eq_graph_pop(&uf->eq_graph, n);
 
   // Re-add all the terms to eq graph
   for (uint32_t i = old_eq_graph_addition_trail_size; i < uf->eq_graph_addition_trail.size; ++ i) {

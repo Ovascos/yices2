@@ -1608,7 +1608,7 @@ void eq_graph_push(eq_graph_t* eq) {
   assert(merge_queue_is_empty(&eq->merge_queue));
 }
 
-void eq_graph_pop(eq_graph_t* eq) {
+void eq_graph_pop(eq_graph_t* eq, uint32_t n) {
 
   if (ctx_trace_enabled(eq->ctx, "mcsat::eq::detail")) {
     ctx_trace_printf(eq->ctx, "eq_graph_pop[%s](): before\n", eq->name);
@@ -1631,7 +1631,7 @@ void eq_graph_pop(eq_graph_t* eq) {
   uint32_t children_list_size;
   uint32_t merges_size;
 
-  scope_holder_pop(&eq->scope_holder,
+  scope_holder_pop_n(&eq->scope_holder, n,
       &kind_list_size,
       &term_list_size,
       &value_list_size,
@@ -1737,10 +1737,10 @@ void eq_graph_pop(eq_graph_t* eq) {
   ivector_shrink(&eq->function_value_rep, function_value_rep_size);
 
   // Pop the pair maps
-  pmap2_pop(&eq->pair_to_id);
-  pmap2_pop(&eq->eq_pair_to_id);
-  pmap2_pop(&eq->pair_to_rep);
-  pmap2_pop(&eq->eq_pair_to_rep);
+  pmap2_pop_n(&eq->pair_to_id, n);
+  pmap2_pop_n(&eq->eq_pair_to_id, n);
+  pmap2_pop_n(&eq->pair_to_rep, n);
+  pmap2_pop_n(&eq->eq_pair_to_rep, n);
 
   // Pop the children
   ivector_shrink(&eq->children_list, children_list_size);

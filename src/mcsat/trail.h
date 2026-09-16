@@ -295,8 +295,11 @@ void trail_pop_propagation(mcsat_trail_t* trail);
 /** Pop the top of the trail (decision) */
 void trail_pop_decision(mcsat_trail_t* trail);
 
-/** Pop all until (and including) the last decision */
-void trail_pop(mcsat_trail_t* trail);
+/**
+ * Pop all the levels above the given one. Assignments at or below that level
+ * which sit above it on the trail are put back, in order and with their values.
+ */
+void trail_pop_to(mcsat_trail_t* trail, uint32_t level);
 
 /** Get the log of unassigned variables (which you can/should clear) */
 static inline

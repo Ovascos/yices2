@@ -78,6 +78,8 @@ void lp_data_variable_order_push(lp_data_t *lp_data);
 
 void lp_data_variable_order_pop(lp_data_t *lp_data);
 
+void lp_data_variable_order_pop_n(lp_data_t *lp_data, uint32_t n);
+
 void lp_data_add_to_model_and_context(lp_data_t *lp_data, lp_variable_t lp_var, const lp_value_t *lp_value);
 
 void lp_data_variable_order_print(const lp_data_t *lp_data, FILE *file);

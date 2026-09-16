@@ -948,7 +948,7 @@ void bv_plugin_push(plugin_t* plugin) {
 // Required as plugin_t field
 
 static
-void bv_plugin_pop(plugin_t* plugin) {
+void bv_plugin_pop(plugin_t* plugin, uint32_t n) {
 
   bv_plugin_t* bv = (bv_plugin_t*) plugin;
 
@@ -957,7 +957,7 @@ void bv_plugin_pop(plugin_t* plugin) {
   }
 
   // Pop the int variable values
-  scope_holder_pop(&bv->scope,
+  scope_holder_pop_n(&bv->scope, n,
       &bv->trail_i,
       &bv->processed_variables_size,
       NULL);
@@ -992,7 +992,7 @@ void bv_plugin_pop(plugin_t* plugin) {
   }
 
   // Pop the feasibility
-  bv_feasible_set_db_pop(bv->feasible);
+  bv_feasible_set_db_pop(bv->feasible, n);
 
   // Undo conflict
   bv->conflict_variable = variable_null;
