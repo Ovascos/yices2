@@ -53,8 +53,8 @@ const mcsat_value_t* bv_feasible_set_db_pick_value(bv_feasible_set_db_t* db, var
 /** Push the context */
 void bv_feasible_set_db_push(bv_feasible_set_db_t* db);
 
-/** Pop the context */
-void bv_feasible_set_db_pop(bv_feasible_set_db_t* db);
+/** Pop the context n times */
+void bv_feasible_set_db_pop(bv_feasible_set_db_t* db, uint32_t n);
 
 typedef enum {
   /** Get reasons for dom(x) = {} */

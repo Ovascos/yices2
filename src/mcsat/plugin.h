@@ -305,9 +305,10 @@ struct plugin_s {
   void (*push) (plugin_t* plugin);
 
   /**
-   * Pop the internal context.
+   * Pop the last n pushes of the internal context at once. The trail is
+   * already back at the level being popped to.
    */
-  void (*pop) (plugin_t* plugin);
+  void (*pop) (plugin_t* plugin, uint32_t n);
 
   /**
    * Build the model.

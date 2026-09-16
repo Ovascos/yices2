@@ -328,12 +328,16 @@ void ff_feasible_set_db_push(ff_feasible_set_db_t *db) {
 }
 
 void ff_feasible_set_db_pop(ff_feasible_set_db_t* db) {
+  ff_feasible_set_db_pop_n(db, 1);
+}
+
+void ff_feasible_set_db_pop_n(ff_feasible_set_db_t* db, uint32_t n) {
   if (ctx_trace_enabled(db->plugin->ctx, "ff::ff_feasible_set_db")) {
     fprintf(ctx_trace_out(db->plugin->ctx), "ff_feasible_set_db_pop");
     ff_feasible_set_db_print(db, ctx_trace_out(db->plugin->ctx));
   }
 
-  scope_holder_pop(&db->scope,
+  scope_holder_pop_n(&db->scope, n,
     &db->updates_size,
     &db->fixed_variable_size,
     &db->fixed_variables_i,
