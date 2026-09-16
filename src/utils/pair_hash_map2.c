@@ -566,6 +566,43 @@ void pmap2_pop(pmap2_t *pmap) {
 }
 
 
+/*
+ * Pop n levels: remove all records allocated at the top n levels
+ * - n must be positive and no more than current_level
+ */
+void pmap2_pop_n(pmap2_t *pmap, uint32_t n) {
+  pmap2_stack_t *stack;
+  uint32_t k, target;
+
+  assert(n > 0);
+
+  stack = &pmap->stack;
+  assert(stack->current_level >= n && stack->current_level >= stack->top_level);
+
+  target = stack->current_level - n;
+
+  /*
+   * k = index of the oldest mark above target. Everything allocated after
+   * that mark belongs to a level we are popping, so one remove_level call
+   * takes all of them, and the table is cleaned up at most once.
+   */
+  k = stack->nmarks;
+  while (k > 0 && stack->data[k - 1].level > target) {
+    k --;
+  }
+
+  if (k < stack->nmarks) {
+    remove_level(&pmap->bank, &pmap->htbl, stack->data[k].block_id, stack->data[k].alloc_idx);
+    pmap2_htbl_cleanup_if_needed(&pmap->htbl);
+    stack->nmarks = k;
+    stack->top_level = (k == 0) ? 0 : stack->data[k - 1].level;
+  }
+
+  stack->current_level = target;
+
+  assert(stack->current_level >= stack->top_level);
+}
+
 
 /*
  * Search for record of key <k0, k1>

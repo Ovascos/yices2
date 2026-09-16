@@ -803,10 +803,10 @@ void bool_plugin_push(plugin_t* plugin) {
 }
 
 static
-void bool_plugin_pop(plugin_t* plugin) {
+void bool_plugin_pop(plugin_t* plugin, uint32_t n) {
   bool_plugin_t* bp = (bool_plugin_t*) plugin;
 
-  scope_holder_pop(&bp->scope,
+  scope_holder_pop_n(&bp->scope, n,
       &bp->trail_i,
       &bp->propagated_size,
       NULL);

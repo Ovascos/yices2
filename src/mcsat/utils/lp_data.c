@@ -129,9 +129,13 @@ void lp_data_variable_order_push(lp_data_t *lp_data) {
 }
 
 void lp_data_variable_order_pop(lp_data_t *lp_data) {
-  scope_holder_pop(&lp_data->scope,
-                   &lp_data->lp_var_order_size,
-                   NULL);
+  lp_data_variable_order_pop_n(lp_data, 1);
+}
+
+void lp_data_variable_order_pop_n(lp_data_t *lp_data, uint32_t n) {
+  scope_holder_pop_n(&lp_data->scope, n,
+                     &lp_data->lp_var_order_size,
+                     NULL);
 
   lp_variable_order_t* order = lp_data->lp_var_order;
   lp_assignment_t* assignment = lp_data->lp_assignment;
