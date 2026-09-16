@@ -83,8 +83,8 @@ void weq_graph_destruct(weq_graph_t* weq);
 /** Push the context */
 void weq_graph_push(weq_graph_t* weq);
 
-/** Pop the context */
-void weq_graph_pop(weq_graph_t* weq);
+/** Pop the context n times */
+void weq_graph_pop(weq_graph_t* weq, uint32_t n);
 
 /** add array term */
 void weq_graph_add_array_term(weq_graph_t* weq, term_t arr);

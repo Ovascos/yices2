@@ -56,6 +56,9 @@ void ff_feasible_set_db_push(ff_feasible_set_db_t* db);
 /** Pop the context */
 void ff_feasible_set_db_pop(ff_feasible_set_db_t* db);
 
+/** Pop the context n times */
+void ff_feasible_set_db_pop_n(ff_feasible_set_db_t* db, uint32_t n);
+
 /** Print the feasible set database */
 void ff_feasible_set_db_print(ff_feasible_set_db_t* db, FILE* out);
 

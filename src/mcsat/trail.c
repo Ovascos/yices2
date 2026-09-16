@@ -18,7 +18,6 @@
  
 #include "mcsat/trail.h"
 #include "io/term_printer.h"
-#include "io/yices_pp.h"
 
 void trail_construct(mcsat_trail_t* trail, const variable_db_t* var_db) {
   trail->var_db = var_db;
@@ -219,22 +218,26 @@ void trail_add_decision(mcsat_trail_t* trail, variable_t x, const mcsat_value_t*
   ivector_push(&trail->elements, x);
 }
 
+static
+void trail_repropagate(mcsat_trail_t* trail) {
+  while (trail->to_repropagate.size > 0) {
+    variable_t x = ivector_last(&trail->to_repropagate);
+    ivector_pop(&trail->to_repropagate);
+    trail->index.data[x] = trail->elements.size;
+    ivector_push(&trail->elements, x);
+  }
+}
+
 void trail_pop_decision(mcsat_trail_t* trail) {
   // Undo the value with the addition of decision unmark
-  variable_t x = ivector_last(&trail->elements);
+  const variable_t x = ivector_last(&trail->elements);
   trail_undo_value(trail, x);
   // Don't unset value, keep for caching: mcsat_model_unset_value(&trail->model, x);
   trail_undo_decision(trail);
   ivector_pop(&trail->elements);
   // Also, we're back into consistent
   trail->inconsistent = false;
-  // Repropagate
-  while (trail->to_repropagate.size > 0) {
-    x = ivector_last(&trail->to_repropagate);
-    ivector_pop(&trail->to_repropagate);
-    trail->index.data[x] = trail->elements.size;
-    ivector_push(&trail->elements, x);
-  }
+  trail_repropagate(trail);
 }
 
 void trail_add_propagation(mcsat_trail_t* trail, variable_t x, const mcsat_value_t* value, uint32_t id, uint32_t level) {
@@ -264,21 +267,30 @@ void trail_pop_propagation(mcsat_trail_t* trail) {
   ivector_pop(&trail->elements);
 }
 
-void trail_pop(mcsat_trail_t* trail) {
-  assert(trail->decision_level >= trail->decision_level_base);
-  assert(trail->level_sizes.size > 0);
-  const uint32_t target_size = ivector_last(&trail->level_sizes);
-  while (trail->elements.size > target_size && trail_get_assignment_type(trail, trail_back(trail)) != DECISION) {
-    trail_pop_propagation(trail);
-  };
-  if (trail->elements.size > target_size) {
-    trail_pop_decision(trail);
-  } else {
-    // Fake push, no decision, so we just undo
-    trail_undo_decision(trail);
-    // Also, we're back into consistent
-    trail->inconsistent = false;
+void trail_pop_to(mcsat_trail_t* trail, uint32_t level) {
+  assert(level >= trail->decision_level_base);
+  assert(level < trail->decision_level);
+  assert(trail->level_sizes.size == trail->decision_level);
+  // Size of the trail when level + 1 started
+  const uint32_t target_size = trail->level_sizes.data[level];
+  while (trail->elements.size > target_size) {
+    const variable_t x = ivector_last(&trail->elements);
+    // Assignments at or below the target level leave only to come back
+    const bool keep = trail_get_level(trail, x) <= level;
+    assert(!keep || trail_get_assignment_type(trail, x) != DECISION);
+    if (keep) {
+      ivector_push(&trail->to_repropagate, x);
+    } else {
+      // Don't unset model value, keep for caching
+      trail_undo_value(trail, x);
+    }
+    ivector_pop(&trail->elements);
   }
+  ivector_shrink(&trail->level_sizes, level);
+  trail->decision_level = level;
+  // Also, we're back into consistent
+  trail->inconsistent = false;
+  trail_repropagate(trail);
 }
 
 void trail_gc_mark(const mcsat_trail_t* trail, gc_info_t* gc_vars) {

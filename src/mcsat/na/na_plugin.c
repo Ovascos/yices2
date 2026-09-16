@@ -1820,7 +1820,7 @@ void na_plugin_push(plugin_t* plugin) {
 }
 
 static
-void na_plugin_pop(plugin_t* plugin) {
+void na_plugin_pop(plugin_t* plugin, uint32_t n) {
 
   na_plugin_t* na = (na_plugin_t*) plugin;
   const mcsat_trail_t* trail = na->ctx->trail;
@@ -1830,7 +1830,7 @@ void na_plugin_pop(plugin_t* plugin) {
   }
 
   // Pop the scoped variables
-  scope_holder_pop(&na->scope,
+  scope_holder_pop_n(&na->scope, n,
       &na->trail_i,
       &na->processed_variables_size,
       NULL);
@@ -1853,12 +1853,12 @@ void na_plugin_pop(plugin_t* plugin) {
   }
 
   // Pop the variable order and the lp model
-  lp_data_variable_order_pop(&na->lp_data);
+  lp_data_variable_order_pop_n(&na->lp_data, n);
 
   assert(na_plugin_check_assignment(na));
 
   // Pop the feasibility
-  feasible_set_db_pop(na->feasible_set_db);
+  feasible_set_db_pop_n(na->feasible_set_db, n);
 
   // Unset the conflict
   na->conflict_variable = variable_null;

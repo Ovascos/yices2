@@ -52,4 +52,10 @@ void scope_holder_push(scope_holder_t* scope, ...);
  * */
 void scope_holder_pop(scope_holder_t* scope, ...);
 
+/**
+ * Pop n scopes at once, restoring the values of the oldest one. Arguments as
+ * for scope_holder_pop.
+ */
+void scope_holder_pop_n(scope_holder_t* scope, uint32_t n, ...);
+
 #endif /* MCSAT_SCOPE_HOLDER_H_ */

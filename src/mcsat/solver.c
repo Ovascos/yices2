@@ -1108,12 +1108,12 @@ void mcsat_push_internal(mcsat_solver_t* mcsat) {
 }
 
 static
-void mcsat_pop_internal(mcsat_solver_t* mcsat) {
+void mcsat_pop_internal(mcsat_solver_t* mcsat, uint32_t n) {
   // Pop the plugins
   for (uint32_t i = 0; i < mcsat->plugins_count; ++ i) {
     plugin_t* plugin = mcsat->plugins[i].plugin;
     if (plugin->pop) {
-      plugin->pop(plugin);
+      plugin->pop(plugin, n);
     }
   }
 
@@ -1522,21 +1522,22 @@ void mcsat_gc(mcsat_solver_t* mcsat, bool mark_and_gc_internal) {
 static
 void mcsat_backtrack_to(mcsat_solver_t* mcsat, uint32_t level, bool update_cache) {
   assert((int32_t) level >= mcsat->assumptions_decided_level);
-  while (mcsat->trail->decision_level > level) {
+  if (mcsat->trail->decision_level > level) {
+    const uint32_t n = mcsat->trail->decision_level - level;
 
     if (trace_enabled(mcsat->ctx->trace, "mcsat::incremental")) {
       trail_print(mcsat->trail, trace_out(mcsat->ctx->trace));
     }
 
-    // Pop the trail
-    trail_pop(mcsat->trail);
+    // Pop the trail, all levels at once
+    trail_pop_to(mcsat->trail, level);
 
     if (trace_enabled(mcsat->ctx->trace, "mcsat::incremental")) {
       trail_print(mcsat->trail, trace_out(mcsat->ctx->trace));
     }
 
-    // Pop the plugins
-    mcsat_pop_internal(mcsat);
+    // Pop the plugins, which see the final trail
+    mcsat_pop_internal(mcsat, n);
   }
 
   // save target cache (when backtracking)
@@ -2679,7 +2680,7 @@ bool mcsat_decide_var(mcsat_solver_t* mcsat, variable_t var, bool force_decision
   if (decision_token.used == 0) {
     // If not decided, remember and go on
     made_decision = false;
-    mcsat_pop_internal(mcsat);
+    mcsat_pop_internal(mcsat, 1);
   } else {
     made_decision = true;
     // Decided, we can continue with the search

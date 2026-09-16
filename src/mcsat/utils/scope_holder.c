@@ -57,19 +57,19 @@ void scope_holder_push(scope_holder_t* scope, ...) {
   va_end(ap);
 }
 
-void scope_holder_pop(scope_holder_t* scope, ...) {
+static
+void scope_holder_pop_va(scope_holder_t* scope, uint32_t n, va_list ap) {
   int32_t *var, *data;
   uint32_t count;
 
+  assert(n > 0);
   assert(scope->trace.size > 0);
-  assert(scope->trace.size >= scope->push_size);
-
-  va_list ap;
-  va_start(ap, scope);
+  assert(scope->trace.size >= n * scope->push_size);
 
   count = 0;
   var = va_arg(ap, int32_t*);
-  data = scope->trace.data + scope->trace.size - scope->push_size;
+  // Values of the oldest of the n scopes, the ones above it are dropped
+  data = scope->trace.data + scope->trace.size - n * scope->push_size;
   while (var != NULL) {
     *var = *data;
     count ++;
@@ -80,7 +80,19 @@ void scope_holder_pop(scope_holder_t* scope, ...) {
   assert(count > 0);
   assert(scope->push_size == count);
 
-  ivector_shrink(&scope->trace, scope->trace.size - count);
+  ivector_shrink(&scope->trace, scope->trace.size - n * count);
+}
 
+void scope_holder_pop(scope_holder_t* scope, ...) {
+  va_list ap;
+  va_start(ap, scope);
+  scope_holder_pop_va(scope, 1, ap);
+  va_end(ap);
+}
+
+void scope_holder_pop_n(scope_holder_t* scope, uint32_t n, ...) {
+  va_list ap;
+  va_start(ap, n);
+  scope_holder_pop_va(scope, n, ap);
   va_end(ap);
 }

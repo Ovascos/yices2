@@ -209,6 +209,15 @@ extern void pmap2_pop(pmap2_t *pmap);
 
 
 /*
+ * Pop n levels: delete all objects created at the top n levels, then
+ * subtract n from current_level. Requires n > 0 and current_level >= n.
+ * Cheaper than n calls to pmap2_pop: the records of those levels are
+ * contiguous, so they are removed in one pass.
+ */
+extern void pmap2_pop_n(pmap2_t *pmap, uint32_t n);
+
+
+/*
  * Set level: same effect as calling push n times from the initial state.
  * - this is used to ensure consistency between pmap2->current_level
  *   and context->base_level if the pmap2 is created when the context
