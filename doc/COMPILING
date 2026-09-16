@@ -677,29 +677,6 @@ Snow Leopard (i.e., Mac OS 10.6.8) and with GMP installed in
 
 
 
-
-
-NOTES: on MacOS X Lion and newer versions, things may be a bit different:
-
-1) Xcode 4.x for Lion no longer includes gcc as compiler. Instead, it
-   includes some versions of llvm-gcc and clang. I tried using Xcode
-   4.1: the llvm-gcc that comes with it is buggy (it seg-faults while
-   compiling Yices). The clang 2.1 distributed with Xcode 4.1 seems to
-   work for compiling but it does not understand option -MG.
-
-   Possible workaround: install llvm+clang 3.0 and use that.
-
-
-2) Binaries and libraries are expected to all be position independent
-   on MacOS X Lion and Mavericks. This causes some issues with GMP (at
-   least with GMP 5.0.2).  A solution is to build libgmp.a using
-   position-independent flags (see the nodes in doc/GMP on how to do
-   that).
-
-
-
-
-
 NOTES FOR CYGWIN AND MINGW BUILDS
 ---------------------------------
 

@@ -32,8 +32,10 @@ Common Dependencies
 -------------------
 
 No matter which variant you want to build, you need a C compiler that
-supports C99. Any reasonably recent version of GCC or Clang should
-work. You will also need standard build tools such as ``GNU Make`` and ``sed``.
+supports ``-std=gnu11`` (C11 with GNU extensions), ``-Wpedantic``, and
+``-fsanitize=address,undefined`` (for ``MODE=sanitize``): GCC 4.9 or
+newer, or Clang 3.3 or newer. You will also need standard build tools
+such as ``GNU Make`` and ``sed``.
 
 You also need the `GNU Multiple Precision <http://gmplib.org>`_
 library (GMP) and the `gperf <http://www.gnu.org/software/gperf>`_

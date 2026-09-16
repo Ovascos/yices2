@@ -123,7 +123,8 @@ dnl ---------------------------------------------
 dnl
 dnl Yices requires C11. We ask for the GNU dialect rather than strict
 dnl -std=c11: strict conformance defines __STRICT_ANSI__, which hides the
-dnl POSIX interfaces used in utils/cputime.c, utils/timeout.c and mt/threads.c.
+dnl POSIX/BSD interfaces the sources use (strdup, strerror_r, fdopen, fileno,
+dnl strtok_r, getc_unlocked, getpagesize, pthread_mutexattr_settype, ...).
 dnl
 dnl We check two things: that $CC accepts the flag, and that it actually
 dnl delivers C11. A compiler that accepts -std=gnu11 but reports an older
@@ -143,9 +144,27 @@ _Static_assert(1, "C11 static assertions are available");
   [[]])],
   [AC_MSG_RESULT(yes)],
   [AC_MSG_RESULT(no)
-   AC_MSG_ERROR([*** $CC does not support -std=gnu11. Yices requires a C11 compiler: GCC 4.7 or newer, or Clang 3.1 or newer ***])])
+   AC_MSG_ERROR([*** $CC does not support -std=gnu11. Yices requires a C11 compiler: GCC 4.9 or newer, or Clang 3.3 or newer ***])])
 CFLAGS=$csl_saved_cflags
 AC_SUBST(C_STD)
+
+dnl
+dnl Check that the C compiler accepts -Wpedantic
+dnl --------------------------------------------
+dnl
+dnl The API tests (tests/api) are compiled with -Wpedantic. GCC rejects an
+dnl unknown warning option, but Clang only warns about it, so the check adds
+dnl -Werror. Configure fails if the flag is not accepted.
+dnl
+csl_saved_cflags=$CFLAGS
+CFLAGS="$C_STD -Wpedantic -Werror $CFLAGS"
+AC_MSG_CHECKING([whether $CC accepts -Wpedantic])
+AC_COMPILE_IFELSE(
+  [AC_LANG_PROGRAM([[]], [[]])],
+  [AC_MSG_RESULT(yes)],
+  [AC_MSG_RESULT(no)
+   AC_MSG_ERROR([*** $CC does not accept -Wpedantic, which Yices requires. See INSTALL for the supported compilers ***])])
+CFLAGS=$csl_saved_cflags
 
 dnl
 dnl Check whether the C compiler accepts the flag -fno-stack-protector

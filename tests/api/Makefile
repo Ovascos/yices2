@@ -109,7 +109,7 @@ ifeq ($(THREAD_SAFE),1)
 endif
 
 
-C_STD=@C_STD@
+CFLAGS += $(C_STD)
 
 
 #
