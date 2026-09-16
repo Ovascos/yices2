@@ -966,7 +966,7 @@ void ff_plugin_push(plugin_t* plugin) {
 }
 
 static
-void ff_plugin_pop(plugin_t* plugin) {
+void ff_plugin_pop(plugin_t* plugin, uint32_t n) {
   ff_plugin_t* ff = (ff_plugin_t*) plugin;
 
   if (ff->lp_data == NULL) {
@@ -976,13 +976,13 @@ void ff_plugin_pop(plugin_t* plugin) {
   assert(ff->lp_data && ff->constraint_db && ff->feasible_set_db);
 
   // Pop the scoped variables
-  scope_holder_pop(&ff->scope,
-                   &ff->trail_i,
-                   &ff->processed_variables_size,
-                   NULL);
+  scope_holder_pop_n(&ff->scope, n,
+                     &ff->trail_i,
+                     &ff->processed_variables_size,
+                     NULL);
 
   // Pop the variable order and the lp model
-  lp_data_variable_order_pop(ff->lp_data);
+  lp_data_variable_order_pop_n(ff->lp_data, n);
 
   // Undo the processed variables
   while (ff->processed_variables.size > ff->processed_variables_size) {
@@ -1001,7 +1001,7 @@ void ff_plugin_pop(plugin_t* plugin) {
     remove_iterator_destruct(&it);
   }
 
-  ff_feasible_set_db_pop(ff->feasible_set_db);
+  ff_feasible_set_db_pop_n(ff->feasible_set_db, n);
 
   assert(ff_plugin_check_assignment(ff));
 }

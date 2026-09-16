@@ -73,13 +73,13 @@ void weq_graph_push(weq_graph_t* weq) {
                     NULL);
 }
 
-void weq_graph_pop(weq_graph_t* weq) {
+void weq_graph_pop(weq_graph_t* weq, uint32_t n) {
   uint32_t t1, t2;
 
   // Pop the int variable values
-  scope_holder_pop(&weq->scope,
-                   &t1, &t2,
-                   NULL);
+  scope_holder_pop_n(&weq->scope, n,
+                     &t1, &t2,
+                     NULL);
 
   ivector_shrink(&weq->array_terms, t1);
   ivector_shrink(&weq->select_terms, t2);

@@ -376,7 +376,7 @@ void bv_feasible_set_db_push(bv_feasible_set_db_t* db) {
   );
 }
 
-void bv_feasible_set_db_pop(bv_feasible_set_db_t* db) {
+void bv_feasible_set_db_pop(bv_feasible_set_db_t* db, uint32_t n) {
 
   if (ctx_trace_enabled(db->ctx, "bv::feasible_set_db")) {
     fprintf(ctx_trace_out(db->ctx), "bv_feasible_set_db_pop");
@@ -385,7 +385,7 @@ void bv_feasible_set_db_pop(bv_feasible_set_db_t* db) {
 
   bv_bdd_manager_t* bddm = db->bddm;
 
-  scope_holder_pop(&db->scope,
+  scope_holder_pop_n(&db->scope, n,
       &db->updates_size,
       &db->fixed_variable_size,
       &db->fixed_variables_i,

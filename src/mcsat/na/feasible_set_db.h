@@ -54,6 +54,9 @@ void feasible_set_db_push(feasible_set_db_t* db);
 /** Pop the context */
 void feasible_set_db_pop(feasible_set_db_t* db);
 
+/** Pop the context n times */
+void feasible_set_db_pop_n(feasible_set_db_t* db, uint32_t n);
+
 /** Get the reason for a conflict on x. Feasible set of x should be empty. */
 void feasible_set_db_get_conflict_reasons(const feasible_set_db_t* db, variable_t x, const mcsat_value_t* x_value, ivector_t* reasons_out, ivector_t* lemma_reasons_out);
 
