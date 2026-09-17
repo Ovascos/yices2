@@ -132,7 +132,7 @@ dnl __STDC_VERSION__ is rejected. Configure fails if either check fails.
 dnl
 C_STD="-std=gnu11"
 csl_saved_cflags=$CFLAGS
-CFLAGS="$C_STD $CFLAGS"
+CFLAGS="$CFLAGS $C_STD"
 AC_MSG_CHECKING([whether $CC supports -std=gnu11])
 AC_COMPILE_IFELSE(
   [AC_LANG_PROGRAM([[
@@ -157,7 +157,7 @@ dnl unknown warning option, but Clang only warns about it, so the check adds
 dnl -Werror. Configure fails if the flag is not accepted.
 dnl
 csl_saved_cflags=$CFLAGS
-CFLAGS="$C_STD -Wpedantic -Werror $CFLAGS"
+CFLAGS="$C_STD -Wpedantic -Werror"
 AC_MSG_CHECKING([whether $CC accepts -Wpedantic])
 AC_COMPILE_IFELSE(
   [AC_LANG_PROGRAM([[]], [[]])],
