@@ -245,6 +245,15 @@ endif
 endif
 
 #
+# C standard
+#
+# 'override' also sets the origin of CFLAGS to "override", after which any
+# later plain assignment to CFLAGS is ignored, so this line must stay below
+# the mode-dependent flags above or it would silently drop -O3 and friends.
+#
+override CFLAGS += $(C_STD)
+
+#
 # Link command for purify/quantify
 #
 ifeq ($(POSIXOS),sunos)

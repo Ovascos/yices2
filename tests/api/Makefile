@@ -243,6 +243,15 @@ endif
 endif
 
 #
+# C standard
+#
+# 'override' also sets the origin of CFLAGS to "override", after which any
+# later plain assignment to CFLAGS is ignored, so this line must stay below
+# the mode-dependent flags above or it would silently drop -O3 and friends.
+#
+override CFLAGS += $(C_STD)
+
+#
 # test_context_delegate_stats, issue_414_mcsat, and test_model_clone_project
 # reach into internal
 # headers to inspect solver-internal state. Those headers use zero-size
@@ -255,18 +264,12 @@ endif
 # per-target := evaluation captures the fully assembled flag set
 # (e.g., -O3 / -g) and only strips the two pedantic warning options.
 #
-$(objdir)/test_context_delegate_stats.o: \
-  CFLAGS := $(filter-out -Wpedantic -Wextra,$(CFLAGS))
-$(objdir)/issue_414_mcsat.o: \
-  CFLAGS := $(filter-out -Wpedantic -Wextra,$(CFLAGS))
-$(objdir)/test_model_clone_project.o: \
-  CFLAGS := $(filter-out -Wpedantic -Wextra,$(CFLAGS))
-$(static_objdir)/test_context_delegate_stats.o: \
-  CFLAGS := $(filter-out -Wpedantic -Wextra,$(CFLAGS))
-$(static_objdir)/issue_414_mcsat.o: \
-  CFLAGS := $(filter-out -Wpedantic -Wextra,$(CFLAGS))
-$(static_objdir)/test_model_clone_project.o: \
-  CFLAGS := $(filter-out -Wpedantic -Wextra,$(CFLAGS))
+$(objdir)/test_context_delegate_stats.o:        CFLAGS := $(filter-out -Wpedantic -Wextra,$(CFLAGS))
+$(objdir)/issue_414_mcsat.o:                    CFLAGS := $(filter-out -Wpedantic -Wextra,$(CFLAGS))
+$(objdir)/test_model_clone_project.o:           CFLAGS := $(filter-out -Wpedantic -Wextra,$(CFLAGS))
+$(static_objdir)/test_context_delegate_stats.o: CFLAGS := $(filter-out -Wpedantic -Wextra,$(CFLAGS))
+$(static_objdir)/issue_414_mcsat.o:             CFLAGS := $(filter-out -Wpedantic -Wextra,$(CFLAGS))
+$(static_objdir)/test_model_clone_project.o:    CFLAGS := $(filter-out -Wpedantic -Wextra,$(CFLAGS))
 
 #
 # Link command for purify/quantify

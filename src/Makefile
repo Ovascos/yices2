@@ -780,8 +780,6 @@ ifeq ($(POSIXOS),mingw)
 endif
 
 
-
-
 #
 # Compilation flags dependent on MODE
 #
@@ -855,6 +853,15 @@ endif
 endif
 endif
 endif
+
+#
+# C standard
+#
+# 'override' also sets the origin of CFLAGS to "override", after which any
+# later plain assignment to CFLAGS is ignored, so this line must stay below
+# the mode-dependent flags above or it would silently drop -O3 and friends.
+#
+override CFLAGS += $(C_STD)
 
 #
 # Object files to include in the dynamic libraries
@@ -1396,6 +1403,7 @@ show-details:
 	@ echo "  LN_S     = $(LN_S)"
 	@ echo "  MKDIR_P  = $(MKDIR_P)"
 	@ echo "  CC       = $(CC)"
+	@ echo "  CFLAGS   = $(CFLAGS)"
 	@ echo "  CPPFLAGS = $(CPPFLAGS)"
 	@ echo "  LIBS     = $(LIBS)"
 	@ echo "  LDFLAGS  = $(LDFLAGS)"
