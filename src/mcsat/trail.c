@@ -273,7 +273,6 @@ void trail_pop_propagation(mcsat_trail_t* trail) {
   const variable_t x = ivector_last(&trail->elements);
   assert(trail_get_assignment_type(trail, x) == PROPAGATION);
   const uint32_t x_level = trail_get_level(trail, x);
-  assert(trail_get_assignment_type(trail, x) == PROPAGATION || trail_get_assignment_type(trail, x) == ASSERTION);
   assert(x_level <= trail->decision_level);
   if (x_level == trail->decision_level) {
     trail_undo_value(trail, x);
@@ -284,6 +283,36 @@ void trail_pop_propagation(mcsat_trail_t* trail) {
     ivector_push(&trail->to_repropagate, x);
   }
   ivector_pop(&trail->elements);
+}
+
+void trail_pop_assertion(mcsat_trail_t* trail) {
+  // Undo the value with the addition of decision unmark
+  const variable_t x = ivector_last(&trail->elements);
+  assert(trail_get_assignment_type(trail, x) == ASSERTION);
+  assert(trail_get_level(trail, x) <= trail->decision_level_base);
+  assert(trail->decision_level == trail->decision_level_base);
+  trail_undo_value(trail, x);
+  // Don't unset model value, keep for caching: mcsat_model_unset_value(&trail->model, x);
+  // TODO: maybe we want to unset the cached value when popping the assertion
+  ivector_pop(&trail->elements);
+}
+
+void trail_pop_any(mcsat_trail_t* trail) {
+  const variable_t x = ivector_last(&trail->elements);
+  switch (trail_get_assignment_type(trail, x)) {
+  case DECISION:
+    trail_pop_decision(trail);
+    break;
+  case PROPAGATION:
+    trail_pop_propagation(trail);
+    break;
+  case ASSERTION:
+    trail_pop_assertion(trail);
+    break;
+  default:
+    assert(false);
+    break;
+  }
 }
 
 void trail_pop_to(mcsat_trail_t* trail, uint32_t level) {

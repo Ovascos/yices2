@@ -155,8 +155,8 @@ variable_t conflict_get_top_level_var(conflict_t* conflict);
 /** Recompute level information */
 void conflict_recompute_level_info(conflict_t* conflict);
 
-/** Resolve the given variable by using ((and reasons) => var = substitution). */
-void conflict_resolve_propagation(conflict_t* conflict, variable_t var, term_t substitution, const ivector_t* reasons);
+/** Resolve the given variable by using ((and reasons) => var = substitution). Pops var off the trail. */
+void conflict_resolve(conflict_t* conflict, variable_t var, term_t substitution, const ivector_t* reasons);
 
 /** Get all the variables responsible for the conflict (internal reference) */
 ivector_t* conflict_get_variables(conflict_t* conflict);
