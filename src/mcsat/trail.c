@@ -356,13 +356,14 @@ bool trail_variable_compare(const mcsat_trail_t *trail, variable_t t1, variable_
   }
 
   // Both literals have a value, sort by decreasing level
-  const uint32_t t1_index = trail_get_index(trail, t1);
-  const uint32_t t2_index = trail_get_index(trail, t2);
-  if (t1_index != t2_index) {
+  const uint32_t t1_lvl = trail_get_level(trail, t1);
+  const uint32_t t2_lvl = trail_get_level(trail, t2);
+  if (t1_lvl != t2_lvl) {
     // t1 > t2 goes to front
-    return t1_index > t2_index;
+    return t1_lvl > t2_lvl;
   } else {
-    return t1 < t2;
+    // Both have the same level, use trail index
+    return trail_get_index(trail, t1) > trail_get_index(trail, t2);
   }
 }
 
