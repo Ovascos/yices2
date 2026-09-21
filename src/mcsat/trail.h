@@ -297,8 +297,14 @@ uint32_t trail_get_source_id(const mcsat_trail_t* trail, variable_t x) {
 /** Pop the top of the trail (propagation) */
 void trail_pop_propagation(mcsat_trail_t* trail);
 
+/** Pop the top of the trail (assertion) */
+void trail_pop_assertion(mcsat_trail_t* trail);
+
 /** Pop the top of the trail (decision) */
 void trail_pop_decision(mcsat_trail_t* trail);
+
+/** Pop calls the appropriate pop function (from above) to remove the top element. */
+void trail_pop_any(mcsat_trail_t* trail);
 
 /**
  * Pop all the levels above the given one. Assignments at or below that level

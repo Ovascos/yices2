@@ -532,7 +532,7 @@ void conflict_recompute_level_info(conflict_t* conflict) {
   conflict_destruct(&new_conflict);
 }
 
-void conflict_resolve_propagation(conflict_t* conflict, variable_t var, term_t substitution, const ivector_t* reasons) {
+void conflict_resolve(conflict_t* conflict, variable_t var, term_t substitution, const ivector_t* reasons) {
 
   if (trace_enabled(conflict->tracer, "mcsat::resolve")) {
     mcsat_trace_printf(conflict->tracer, "conflict = \n");
@@ -596,8 +596,9 @@ void conflict_resolve_propagation(conflict_t* conflict, variable_t var, term_t s
     }
   }
 
-  // Pop the trail
-  trail_pop_propagation(conflict->trail);
+  // Pop before adding: while var is assigned, a resolvent or reason that is
+  // var's own literal (evaluation propagations) would be attributed to var again
+  trail_pop_any(conflict->trail);
 
   // Add the substitution disjuncts
   for (i = 0; i < disjuncts.size; ++ i) {
@@ -616,7 +617,6 @@ void conflict_resolve_propagation(conflict_t* conflict, variable_t var, term_t s
     mcsat_trace_printf(conflict->tracer, "conflict = \n");
     conflict_print(conflict, trace_out(conflict->tracer));
   }
-
 }
 
 ivector_t* conflict_get_variables(conflict_t* conflict) {

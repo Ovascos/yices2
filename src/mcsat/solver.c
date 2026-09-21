@@ -2117,16 +2117,9 @@ term_t mcsat_analyze_final(mcsat_solver_t* mcsat, conflict_t* input_conflict) {
       mcsat_trace_printf(trace, "\n");
     }
 
-    // Skip decisions
-    if (trail_get_assignment_type(&trail, var) == DECISION) {
-      trail_pop_decision(&trail);
-      conflict_recompute_level_info(&conflict);
-      continue;
-    }
-
-    // Skip the conflict variable (it was propagated)
-    if (var == mcsat->variable_in_conflict) {
-      trail_pop_propagation(&trail);
+    // Skip the conflict variable and any other decision
+    if (var == mcsat->variable_in_conflict || trail_get_assignment_type(&trail, var) == DECISION) {
+      trail_pop_any(&trail);
       conflict_recompute_level_info(&conflict);
       continue;
     }
@@ -2166,10 +2159,10 @@ term_t mcsat_analyze_final(mcsat_solver_t* mcsat, conflict_t* input_conflict) {
         bool value = trail_get_boolean_value(&trail, var);
         substitution = value ? true_term : false_term;
       }
-      conflict_resolve_propagation(&conflict, var, substitution, &literals);
+      conflict_resolve(&conflict, var, substitution, &literals);
     } else {
       // Continue with resolution
-      trail_pop_propagation(&trail);
+      trail_pop_any(&trail);
     }
   }
 
@@ -2493,7 +2486,7 @@ void mcsat_analyze_conflicts(mcsat_solver_t* mcsat, uint32_t* restart_resource) 
           mcsat_trace_printf(trace,"skipping propagation (bool)\n");
         }
       }
-      conflict_resolve_propagation(&conflict, var, substitution, &reason);
+      conflict_resolve(&conflict, var, substitution, &reason);
       // The trail pops with the resolution step
     } else {
       // Have to pop the trail manually
