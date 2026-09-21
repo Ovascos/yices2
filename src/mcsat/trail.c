@@ -223,6 +223,7 @@ void trail_repropagate(mcsat_trail_t* trail) {
   while (trail->to_repropagate.size > 0) {
     variable_t x = ivector_last(&trail->to_repropagate);
     ivector_pop(&trail->to_repropagate);
+    assert(trail_get_level(trail, x) <= trail->decision_level);
     trail->index.data[x] = trail->elements.size;
     ivector_push(&trail->elements, x);
   }
@@ -271,6 +272,9 @@ void trail_pop_to(mcsat_trail_t* trail, uint32_t level) {
   assert(level >= trail->decision_level_base);
   assert(level < trail->decision_level);
   assert(trail->level_sizes.size == trail->decision_level);
+  // Propagations stashed by trail_pop_propagation sat on top of the trail and
+  // may be above the target level, so put them back to be filtered below
+  trail_repropagate(trail);
   // Size of the trail when level + 1 started
   const uint32_t target_size = trail->level_sizes.data[level];
   while (trail->elements.size > target_size) {
