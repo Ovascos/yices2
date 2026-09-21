@@ -1948,6 +1948,11 @@ void mcsat_add_lemma(mcsat_solver_t* mcsat, ivector_t* lemma, term_t decision_bo
   if (uip) {
     // UIP, just make sure we're not going below assumptions
     if ((int32_t) top_level >= mcsat->assumptions_decided_level) {
+      // TODO for CB: Don't further backtrack.
+      // Assume a clause (L1, L2, ...) with only L1 unassigned and L2 the highest assigned literal.
+      // Then in NCB, we backtrack to the lvl of L2 in order to imply L1 there. For CB, we backtrack
+      // to the level of L1 minus 1, to undo the incorrect assignment of L1, and re-imply L1 there
+      // with lvl of L2. The backtrack to L1 minus 1 has already be done at this point.
       mcsat_backtrack_to(mcsat, top_level, false);
     }
   } else {
@@ -2314,6 +2319,14 @@ void mcsat_assumption_conflict_calc_interpolant(mcsat_solver_t* mcsat)
   }
 }
 
+/**
+ * Given a conflict, we backtrack until exactly one top variable is found by the conflict. We
+ * resolve until there is one top variable decision we can undo. We conclude by undoing the
+ * assignment of the final top variable by performing one more backtrack.
+ * We have to do this in, both, CB and NCB, as the incorrect assignment must be undone either way.
+ * If we backtrack base level or assumption level, we're unsat or unsat with assumptions, respectively.
+ * TODO perform only one (final) backtrack operation. This may avoid additional effort in plugins.
+ */
 static
 void mcsat_analyze_conflicts(mcsat_solver_t* mcsat, uint32_t* restart_resource) {
 
@@ -2381,6 +2394,7 @@ void mcsat_analyze_conflicts(mcsat_solver_t* mcsat, uint32_t* restart_resource) 
   uint32_t conflict_level = conflict_get_level(&conflict);
   // Backtrack max(base, assumptions, conflict)
   uint32_t backtrack_level = mcsat_compute_backtrack_level(mcsat, conflict_level);
+  // Here we backtrack the initial top variable of the conflict.
   mcsat_backtrack_to(mcsat, backtrack_level, false);
 
   term_t decision_bound = NULL_TERM;
@@ -2506,7 +2520,7 @@ void mcsat_analyze_conflicts(mcsat_solver_t* mcsat, uint32_t* restart_resource) 
     }
 
     if (conflict_get_top_level_vars_count(&conflict) == 0) {
-      // We have resolved the conflict even lower
+      // We have resolved the conflict even lower and we start the analysis over
       conflict_recompute_level_info(&conflict);
       conflict_level = conflict_get_level(&conflict);
       backtrack_level = mcsat_compute_backtrack_level(mcsat, conflict_level);
@@ -2532,6 +2546,9 @@ void mcsat_analyze_conflicts(mcsat_solver_t* mcsat, uint32_t* restart_resource) 
     assert(conflict_get_top_level_vars_count(&conflict) == 1);
     // We should still be in conflict, so back out
     assert(conflict.level == mcsat->trail->decision_level);
+    // We have reached the decision level of the conflict. Backtrack once more to undo the top
+    // conflict variable assignment and make it undefined. When learning the lemma, we will further
+    // backtrack in case of NCB.
     mcsat_backtrack_to(mcsat, mcsat->trail->decision_level - 1, true);
 
     // Get the literals
