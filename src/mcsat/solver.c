@@ -1161,7 +1161,7 @@ void mcsat_push(mcsat_solver_t* mcsat) {
   // Regular push for the internal data structures
   mcsat_push_internal(mcsat);
   // Push and set the base level on the trail
-  trail_new_base_level(mcsat->trail);
+  trail_push_base_level(mcsat->trail);
   // Push the preprocessor
   preprocessor_push(&mcsat->preprocessor);
 
@@ -1193,7 +1193,7 @@ void mcsat_pop(mcsat_solver_t* mcsat) {
   }
 
   // Backtrack trail
-  uint32_t new_base_level = trail_pop_base_level(mcsat->trail);
+  const uint32_t new_base_level = trail_pop_base_level(mcsat->trail);
 
   // Backtrack solver
   mcsat_backtrack_to(mcsat, new_base_level, false);
