@@ -198,7 +198,7 @@ bool trail_is_at_base_level(const mcsat_trail_t* trail) {
 }
 
 /** Set the trail base level to current decision level */
-void trail_new_base_level(mcsat_trail_t* trail);
+void trail_push_base_level(mcsat_trail_t* trail);
 
 /** Pop the base level down, returns the new base level (current-1) */
 uint32_t trail_pop_base_level(mcsat_trail_t* trail);

@@ -143,12 +143,6 @@ void trail_new_decision(mcsat_trail_t* trail) {
   ivector_push(&trail->level_sizes, trail->elements.size);
 }
 
-void trail_new_base_level(mcsat_trail_t* trail) {
-  assert(trail->decision_level == trail->decision_level_base);
-  trail_new_decision(trail);
-  trail->decision_level_base = trail->decision_level;
-}
-
 inline static
 void clear_cache(mcsat_model_t* cache) {
   for (variable_t var = 0; var < cache->size; ++var) {
@@ -156,6 +150,12 @@ void clear_cache(mcsat_model_t* cache) {
       mcsat_model_unset_value(cache, var);
     }
   }
+}
+
+void trail_push_base_level(mcsat_trail_t* trail) {
+  assert(trail->decision_level == trail->decision_level_base);
+  trail_new_decision(trail);
+  trail->decision_level_base = trail->decision_level;
 }
 
 uint32_t trail_pop_base_level(mcsat_trail_t* trail) {
@@ -232,6 +232,7 @@ void trail_repropagate(mcsat_trail_t* trail) {
 void trail_pop_decision(mcsat_trail_t* trail) {
   // Undo the value with the addition of decision unmark
   const variable_t x = ivector_last(&trail->elements);
+  assert(trail_get_assignment_type(trail, x) == DECISION);
   trail_undo_value(trail, x);
   // Don't unset value, keep for caching: mcsat_model_unset_value(&trail->model, x);
   trail_undo_decision(trail);
@@ -255,6 +256,7 @@ void trail_add_propagation(mcsat_trail_t* trail, variable_t x, const mcsat_value
 void trail_pop_propagation(mcsat_trail_t* trail) {
   // Undo the value with the addition of decision unmark
   const variable_t x = ivector_last(&trail->elements);
+  assert(trail_get_assignment_type(trail, x) == PROPAGATION);
   const uint32_t x_level = trail_get_level(trail, x);
   assert(x_level <= trail->decision_level);
   if (x_level == trail->decision_level) {
