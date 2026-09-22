@@ -232,13 +232,13 @@ static const mcsat_supplement_check_t mcsat_supplement_check_code[NUM_MCSAT_SUPP
  * Names of the MCSAT backtracking modes (in lexicographic order)
  */
 static const char * const mcsat_backtrack_modes[NUM_MCSAT_BACKTRACK_MODES] = {
+  "cb",
   "ncb",
-  "rscb",
 };
 
 static const mcsat_backtrack_t mcsat_backtrack_code[NUM_MCSAT_BACKTRACK_MODES] = {
+  MCSAT_BACKTRACK_CB,
   MCSAT_BACKTRACK_NCB,
-  MCSAT_BACKTRACK_RSCB,
 };
 
 
@@ -519,7 +519,7 @@ bool param_val_to_mcsat_supplement_check(const char *name, const param_val_t *v,
 
 /*
  * MCSAT backtracking mode
- * - allowed modes are "ncb" and "rscb"
+ * - allowed modes are "cb" and "ncb"
  */
 bool param_val_to_mcsat_backtrack(const char *name, const param_val_t *v,
                                   mcsat_backtrack_t *value, char **reason) {
@@ -532,7 +532,7 @@ bool param_val_to_mcsat_backtrack(const char *name, const param_val_t *v,
       return true;
     }
   }
-  *reason = "must be one of 'ncb' 'rscb'";
+  *reason = "must be one of 'cb' 'ncb'";
 
   return false;
 }

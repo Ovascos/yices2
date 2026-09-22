@@ -28,8 +28,8 @@
 typedef enum {
   /** Non-chronological backtracking (backjumping) */
   MCSAT_BACKTRACK_NCB,
-  /** Restricted-scope chronological backtracking */
-  MCSAT_BACKTRACK_RSCB,
+  /** Chronological backtracking */
+  MCSAT_BACKTRACK_CB,
 } mcsat_backtrack_t;
 
 // keep in sync with mcsat_backtrack_modes in frontend/common/parameters.c

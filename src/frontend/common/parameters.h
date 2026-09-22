@@ -222,7 +222,7 @@ extern bool param_val_to_mcsat_supplement_check(const char *name, const param_va
 
 /*
  * MCSAT backtracking mode
- * - allowed modes are "ncb" and "rscb"
+ * - allowed modes are "cb" and "ncb"
  */
 extern bool param_val_to_mcsat_backtrack(const char *name, const param_val_t *v, mcsat_backtrack_t *value, char **reason);
 
