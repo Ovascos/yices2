@@ -1944,15 +1944,14 @@ void mcsat_add_lemma(mcsat_solver_t* mcsat, ivector_t* lemma, term_t decision_bo
   assert(top_level <= mcsat->trail->decision_level);
 
   const bool uip = unassigned.size == 1;
+  const bool cb = mcsat->ctx->mcsat_options.backtrack == MCSAT_BACKTRACK_CB;
   // Backtrack to the appropriate level and do some progress
   if (uip) {
-    // UIP, just make sure we're not going below assumptions
-    if ((int32_t) top_level >= mcsat->assumptions_decided_level) {
-      // TODO for CB: Don't further backtrack.
-      // Assume a clause (L1, L2, ...) with only L1 unassigned and L2 the highest assigned literal.
-      // Then in NCB, we backtrack to the lvl of L2 in order to imply L1 there. For CB, we backtrack
-      // to the level of L1 minus 1, to undo the incorrect assignment of L1, and re-imply L1 there
-      // with lvl of L2. The backtrack to L1 minus 1 has already be done at this point.
+    // UIP: the lemma (L1, L2, ...) has only L1 unassigned and L2 the highest assigned literal.
+    // NCB backtracks to the lvl of L2 in order to imply L1 there, but not below assumptions.
+    // CB has already backtracked to the level of L1 minus 1, undoing the incorrect assignment
+    // of L1, and re-implies L1 there with lvl of L2.
+    if (!cb && (int32_t) top_level >= mcsat->assumptions_decided_level) {
       mcsat_backtrack_to(mcsat, top_level, false);
     }
   } else {
@@ -2398,6 +2397,7 @@ void mcsat_analyze_conflicts(mcsat_solver_t* mcsat, uint32_t* restart_resource) 
   mcsat_backtrack_to(mcsat, backtrack_level, false);
 
   term_t decision_bound = NULL_TERM;
+  const bool cb = mcsat->ctx->mcsat_options.backtrack == MCSAT_BACKTRACK_CB;
 
   // Analyze while at least one variable at conflict level
   while (true) {
@@ -2483,8 +2483,12 @@ void mcsat_analyze_conflicts(mcsat_solver_t* mcsat, uint32_t* restart_resource) 
     const variable_t var = trail_back(mcsat->trail);
     assert(trail_get_assignment_type(mcsat->trail, var) != DECISION);
 
-    // Resolve if in the conflict and current level
-    if (conflict_contains(&conflict, var)) {
+    // Resolve if in the conflict and current level. In CB, lower-level variables stay in the
+    // lemma: kept ones at the back of the trail are parked, not resolved.
+    // TODO check if this is the best option
+    const bool resolve = conflict_contains(&conflict, var) &&
+      (!cb || trail_get_level(mcsat->trail, var) == conflict_get_level(&conflict));
+    if (resolve) {
       assert(trail_get_assignment_type(mcsat->trail, var) == PROPAGATION);
 
       // Get the plugin that performed the propagation

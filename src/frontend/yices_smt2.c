@@ -327,7 +327,7 @@ static void print_mcsat_help(const char *progname) {
          "    --mcsat-na-bound-max=<B> Set maximal bound for search\n"
          "    --mcsat-bv-var-size=<B>   Set size of bit-vector variables in MCSAT search\n"
          "    --mcsat-partial-restart   Enable partial restart heuristic in MCSAT search\n"
-         "    --mcsat-backtrack=<M>     Set the backtracking mode (can be ncb, rscb) (default: ncb)\n"
+         "    --mcsat-backtrack=<M>     Set the backtracking mode (can be ncb, cb) (default: ncb)\n"
          "    --mcsat-check-model       Check each model in MCSAT search\n");
   fflush(stdout);
 }

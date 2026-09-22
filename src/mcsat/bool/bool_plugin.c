@@ -132,6 +132,12 @@ struct bool_plugin_s {
 
 };
 
+/** Whether the search backtracks chronologically */
+static inline
+bool bool_plugin_is_cb(const bool_plugin_t* bp) {
+  return bp->ctx->options->backtrack == MCSAT_BACKTRACK_CB;
+}
+
 static
 void bool_plugin_stats_init(bool_plugin_t* bp) {
   bp->stats.propagations = statistics_new_int(bp->ctx->stats, "mcsat::bool::propagations");
@@ -542,13 +548,11 @@ void bool_plugin_add_new_clauses(bool_plugin_t* bp, trail_token_t* prop) {
     if (prop_lvl >= 0) {
       const mcsat_clause_t* c = clause_db_get_clause(&bp->clause_db, c_ref);
       // A unit clause is not watched, so this is the only place it propagates.
-      // The clause may propagate below the current level (assumptions and unit
-      // clauses), but we still assign at the current one.
-      // TODO for CB: pass propagation_level here. The trail then keeps the value
-      // across a pop and repropagates it, while bool_plugin_pop() drops the
-      // reason of every variable propagated in the popped scope.
+      // The clause may propagate below the current level (assumptions, unit
+      // clauses and lemmas in CB). NCB assigns those at the current level.
       assert(prop_lvl <= dec_lvl);
-      bool_plugin_propagate_literal(bp, c->literals[0], prop, c_ref, prop_lvl == base_lvl ? base_lvl : dec_lvl);
+      const uint32_t lvl = (bool_plugin_is_cb(bp) || prop_lvl == base_lvl) ? prop_lvl : dec_lvl;
+      bool_plugin_propagate_literal(bp, c->literals[0], prop, c_ref, lvl);
     }
   }
   // Done with the clause, reset
@@ -563,6 +567,7 @@ static
 void bool_plugin_propagate(plugin_t* plugin, trail_token_t* prop) {
   bool_plugin_t* bp = (bool_plugin_t*)plugin;
   const mcsat_trail_t* trail = bp->ctx->trail;
+  const bool cb = bool_plugin_is_cb(bp);
 
   // Add any new clauses
   bool_plugin_add_new_clauses(bp, prop);
@@ -585,6 +590,7 @@ void bool_plugin_propagate(plugin_t* plugin, trail_token_t* prop) {
 
     assert(trail_has_value(trail, var));
     const bool var_value = trail_get_value(trail, var)->b;
+    const uint32_t var_level = trail_get_level(trail, var);
 
     if (ctx_trace_enabled(bp->ctx, "bool::propagate")) {
       ctx_trace_printf(bp->ctx, "checking propagation due to ");
@@ -602,6 +608,8 @@ void bool_plugin_propagate(plugin_t* plugin, trail_token_t* prop) {
 
     while (trail_is_consistent(trail) && !bcp_remove_iterator_done(&it)) {
       bcp_watcher_t* it_w = bcp_remove_iterator_get_watcher(&it);
+      // Adding a watch may move the watchers, so it_w is not used after that
+      const clause_ref_t cref = it_w->cref;
 
       // Check the blocker
       if(literal_is_true(it_w->blocker, trail)) {
@@ -613,19 +621,19 @@ void bool_plugin_propagate(plugin_t* plugin, trail_token_t* prop) {
       if (it_w->is_binary) {
         // Check the blocker, the blocker is the other literal by construction
         if (literal_is_false(it_w->blocker, trail)) {
-          bool_plugin_report_conflict(bp, prop, it_w->cref);
+          bool_plugin_report_conflict(bp, prop, cref);
         } else {
-          bool_plugin_propagate_literal(bp, it_w->blocker, prop, it_w->cref, trail->decision_level);
+          bool_plugin_propagate_literal(bp, it_w->blocker, prop, cref, cb ? var_level : trail->decision_level);
         }
         bcp_remove_iterator_next_and_keep(&it);
         continue;
       }
 
       // Get the clause
-      mcsat_clause_t* clause = clause_db_get_clause(&bp->clause_db, it_w->cref);
+      mcsat_clause_t* clause = clause_db_get_clause(&bp->clause_db, cref);
 
       if (ctx_trace_enabled(bp->ctx, "bool::propagate")) {
-        ctx_trace_printf(bp->ctx, "bool propagate on: %d ", it_w->cref);
+        ctx_trace_printf(bp->ctx, "bool propagate on: %d ", cref);
         clause_print(clause, bp->ctx->var_db, bp->ctx->tracer->file);
         ctx_trace_printf(bp->ctx, "\n");
       }
@@ -647,23 +655,28 @@ void bool_plugin_propagate(plugin_t* plugin, trail_token_t* prop) {
         continue;
       }
 
-      // Find a new watch
+      // Find a new watch, and the highest level among the false literals
       bool watch_found = false;
+      uint32_t prop_lvl = var_level;
       for (uint32_t k = 2; k < clause->size; ++ k) {
         if (!literal_is_false(clause->literals[k], trail)) {
           // Put it in place and add to watch list if not true at base level
           clause_swap_literals(clause, 1, k);
           const mcsat_literal_t lit = clause->literals[1];
           const mcsat_literal_t lit_neg = literal_negate(lit);
-          bcp_watch_manager_add_to_watch(&bp->wlm, lit_neg, it_w->cref, false, clause->literals[0]);
+          bcp_watch_manager_add_to_watch(&bp->wlm, lit_neg, cref, false, clause->literals[0]);
           // Found the watch, done
           watch_found = true;
           break;
         } else {
+          const uint32_t lit_lvl = literal_get_level(clause->literals[k], trail);
+          if (lit_lvl > prop_lvl) {
+            prop_lvl = lit_lvl;
+          }
           // Literal is false, see if at level 0, to push to back
           // TODO: We can check == clause level, but it's not clear
           // this optimization has any merit
-          if (literal_get_level(clause->literals[k], trail) == 0) {
+          if (lit_lvl == 0) {
             clause->size --;
             clause_swap_literals(clause, k, clause->size);
             -- k;
@@ -680,15 +693,15 @@ void bool_plugin_propagate(plugin_t* plugin, trail_token_t* prop) {
         if (literal_has_value(lit, trail)) {
           // We've checked that it's not true, so it must be false
           assert(literal_is_false(lit, trail));
-          bool_plugin_report_conflict(bp, prop, it_w->cref);
+          bool_plugin_report_conflict(bp, prop, cref);
         } else {
-          bool_plugin_propagate_literal(bp, lit, prop, it_w->cref, trail->decision_level);
+          bool_plugin_propagate_literal(bp, lit, prop, cref, cb ? prop_lvl : trail->decision_level);
         }
         // Keep the watch
         bcp_remove_iterator_next_and_keep(&it);
       } else {
         if (ctx_trace_enabled(bp->ctx, "bool::propagate")) {
-          ctx_trace_printf(bp->ctx, "new watch found: %d ", it_w->cref);
+          ctx_trace_printf(bp->ctx, "new watch found: %d ", cref);
           clause_print(clause, bp->ctx->var_db, bp->ctx->tracer->file);
           ctx_trace_printf(bp->ctx, "\n");
         }
@@ -852,11 +865,18 @@ void bool_plugin_pop(plugin_t* plugin, uint32_t n) {
       &bp->propagated_size,
       NULL);
 
+  // The trail is final: a propagation it kept stays explainable, in the current scope
+  uint32_t i, keep;
   assert(bp->propagated.size >= bp->propagated_size);
-  while (bp->propagated.size > bp->propagated_size) {
-    const variable_t propagated_var = ivector_pop2(&bp->propagated);
-    bool_plugin_set_reason_ref(bp, propagated_var, clause_ref_null);
+  for (i = bp->propagated_size, keep = bp->propagated_size; i < bp->propagated.size; ++ i) {
+    const variable_t propagated_var = bp->propagated.data[i];
+    if (trail_has_value(bp->ctx->trail, propagated_var)) {
+      bp->propagated.data[keep ++] = propagated_var;
+    } else {
+      bool_plugin_set_reason_ref(bp, propagated_var, clause_ref_null);
+    }
   }
+  ivector_shrink(&bp->propagated, keep);
 }
 
 /**
