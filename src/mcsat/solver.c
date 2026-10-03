@@ -1164,6 +1164,8 @@ void mcsat_push(mcsat_solver_t* mcsat) {
   trail_new_base_level(mcsat->trail);
   // Push the preprocessor
   preprocessor_push(&mcsat->preprocessor);
+  // Push the l2o assertions
+  l2o_push(&mcsat->l2o);
 
   if (trace_enabled(mcsat->ctx->trace, "mcsat::push")) {
     mcsat_trace_printf(mcsat->ctx->trace, "mcsat::pop end\n");
@@ -1215,6 +1217,8 @@ void mcsat_pop(mcsat_solver_t* mcsat) {
 
   // Pop the preprocessor
   preprocessor_pop(&mcsat->preprocessor);
+  // Pop the l2o assertions
+  l2o_pop(&mcsat->l2o);
 
   // Notify all the plugins that we just popped
   mcsat_notify_plugins(mcsat, MCSAT_SOLVER_POP);
