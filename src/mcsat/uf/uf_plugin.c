@@ -1858,12 +1858,14 @@ void uf_plugin_add_to_eq_graph(uf_plugin_t* uf, term_t t, bool record) {
   case EQ_TERM:
     t_desc = eq_term_desc(terms, t);
     eq_graph_add_ifun_term(&uf->eq_graph, t, EQ_TERM, 2, t_desc->arg);
-    // remember array terms
+    // remember array terms, including applications that return an array
+    // (nested arrays, curried functions)
     uint32_t i;
     for (i = 0; i < 2; ++ i) {
       if (is_function_term(terms, t_desc->arg[i]) &&
           (term_kind(terms, t_desc->arg[i]) == UNINTERPRETED_TERM ||
-           term_kind(terms, t_desc->arg[i]) == UPDATE_TERM)) {
+           term_kind(terms, t_desc->arg[i]) == UPDATE_TERM ||
+           term_kind(terms, t_desc->arg[i]) == APP_TERM)) {
         weq_graph_add_array_term(&uf->weq_graph, t_desc->arg[i]);
       }
     }
