@@ -2179,17 +2179,30 @@ value_t vtbl_mk_int32(value_table_t *table, int32_t i) {
 
 /*
  * Return a finitefield constant = v
+ * - v is reduced to its representative in [0, mod): MC-SAT reports field
+ *   elements in the symmetric range, e.g. -1 for 2 mod 3
  */
 value_t vtbl_mk_finitefield(value_table_t *table, rational_t *v, const rational_t *mod) {
+  rational_t aux;
+  value_t k;
+
+  assert(q_is_integer(v) && q_is_integer(mod) && q_is_pos(mod));
+  q_init(&aux);
+  q_set(&aux, v);
+  q_integer_rem(&aux, mod);
+
   ff_hobj_t ff_hobj;
   ff_hobj.m.hash = (hobj_hash_t) hash_finitefield_value;
   ff_hobj.m.eq = (hobj_eq_t) equal_finitefield_value;
   ff_hobj.m.build = (hobj_build_t) build_finitefield_value;
   ff_hobj.table = table;
-  ff_hobj.v = v;
+  ff_hobj.v = &aux;
   ff_hobj.mod = (rational_t*)mod;
 
-  return int_htbl_get_obj(&table->htbl, (int_hobj_t *) &ff_hobj);
+  k = int_htbl_get_obj(&table->htbl, (int_hobj_t *) &ff_hobj);
+  q_clear(&aux);
+
+  return k;
 }
 
 /*

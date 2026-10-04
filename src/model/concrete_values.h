@@ -455,6 +455,7 @@ extern value_t vtbl_mk_int32(value_table_t *table, int32_t x);
 
 /*
  * Finite field constants (make a copy).
+ * - v is reduced modulo mod into [0, mod)
  */
 extern value_t vtbl_mk_finitefield(value_table_t *table, rational_t *v, const rational_t *mod);
 
