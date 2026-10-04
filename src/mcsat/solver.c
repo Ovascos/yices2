@@ -2873,26 +2873,36 @@ void luby_next(luby_t* luby) {
 }
 
 static
-void mcsat_check_model(mcsat_solver_t* mcsat, bool assert) {
+bool mcsat_check_model(mcsat_solver_t* mcsat, bool assert) {
+  (void) assert;
   // Check models
   model_t model;
   init_model(&model, mcsat->terms, true);
   mcsat_build_model(mcsat, &model);
-  uint32_t i = 0;
-  for (i = 0; i < mcsat->assertion_terms_original.size; ++i) {
-    term_t assertion = mcsat->assertion_terms_original.data[i];
+  bool assertion_is_true = true;
+  for (uint32_t i = 0; i < mcsat->assertion_terms_original.size; ++i) {
+    const term_t assertion = mcsat->assertion_terms_original.data[i];
     int32_t code = 0;
-    bool assertion_is_true = formula_holds_in_model(&model, assertion, &code);
-    if (false && !assertion_is_true) {
+    assertion_is_true = formula_holds_in_model(&model, assertion, &code);
+    if (code < 0) {
+      // The evaluator can't decide the assertion
+      trace_printf(mcsat->ctx->trace, 1, "Could not evaluate assertion in model (error %d): ", code);
+      trace_pp_term(mcsat->ctx->trace, 1, mcsat->terms, assertion);
+      assertion_is_true = true;
+      continue;
+    }
+    if (!assertion_is_true) {
       FILE *out = trace_out(mcsat->ctx->trace);
       fprintf(out, "Assertion not true in model: ");
       trace_term_ln(mcsat->ctx->trace, mcsat->terms, assertion);
       fprintf(out, "In model:\n");
       model_print(out, &model);
+      break;
     }
-    assert(!assert || assertion_is_true);
   }
   delete_model(&model);
+  assert(!assert || assertion_is_true);
+  return assertion_is_true;
 }
 
 static
@@ -3186,8 +3196,12 @@ void mcsat_solve(mcsat_solver_t* mcsat, const param_t *params, model_t* mdl, uin
 
     // Nothing to decide, we're satisfiable
     mcsat->status = YICES_STATUS_SAT;
-    if (trace_enabled(mcsat->ctx->trace, "mcsat::model::check")) {
-      mcsat_check_model(mcsat, true);
+    const bool model_check_assert = trace_enabled(mcsat->ctx->trace, "mcsat::model::check");
+    if (mcsat->ctx->mcsat_options.check_model || model_check_assert) {
+      const bool model_ok = mcsat_check_model(mcsat, model_check_assert);
+      if (!model_ok) {
+        mcsat->status = YICES_STATUS_ERROR;
+      }
     }
 
     break;

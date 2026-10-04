@@ -5521,6 +5521,10 @@ static bool yices_get_option(smt2_globals_t *g, yices_param_t p) {
     print_int32_value(g->mcsat_options.bv_var_size);
     break;
 
+  case PARAM_MCSAT_CHECK_MODEL:
+    print_boolean_value(g->mcsat_options.check_model);
+    break;
+
   case PARAM_MCSAT_L2O:
     print_boolean_value(g->mcsat_options.l2o);
     break;
@@ -6358,6 +6362,16 @@ static void yices_set_option(smt2_globals_t *g, const char *param, const param_v
       context = g->ctx;
       if (context != NULL) {
         context->mcsat_options.partial_restart = tt;
+      }
+    }
+    break;
+
+  case PARAM_MCSAT_CHECK_MODEL:
+    if (param_val_to_bool(param, val, &tt, &reason)) {
+      g->mcsat_options.check_model = tt;
+      context = g->ctx;
+      if (context != NULL) {
+        context->mcsat_options.check_model = tt;
       }
     }
     break;
