@@ -460,6 +460,7 @@ extern value_t vtbl_mk_finitefield(value_table_t *table, rational_t *v, const ra
 
 /*
  * Algebraic number (make a copy).
+ * - if a is rational, the result is a rational object
  */
 extern value_t vtbl_mk_algebraic(value_table_t *table, void *a);
 
