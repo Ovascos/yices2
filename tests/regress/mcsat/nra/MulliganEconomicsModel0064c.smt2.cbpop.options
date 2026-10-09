@@ -1,0 +1,1 @@
+--mcsat --mcsat-l2o --mcsat-backtrack=cb --mcsat-na-late-pop

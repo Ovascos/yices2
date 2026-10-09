@@ -2366,6 +2366,23 @@ void mcsat_analyze_conflicts(mcsat_solver_t* mcsat, uint32_t* restart_resource) 
   uint32_t plugin_i = mcsat->plugin_in_conflict->ctx.plugin_id;
   plugin_t* plugin = mcsat->plugins[plugin_i].plugin;
 
+  // Late pop (option na_late_pop): the plugin may resolve the conflict by backtracking,
+  // without a lemma and not below the base and assumption levels
+  const uint32_t min_backtrack_level = mcsat_compute_backtrack_level(mcsat, 0);
+  uint32_t conflict_backtrack_level;
+  if (mcsat->ctx->mcsat_options.na_late_pop && min_backtrack_level < mcsat->trail->decision_level &&
+      plugin->get_conflict_backtrack_level &&
+      plugin->get_conflict_backtrack_level(plugin, min_backtrack_level, &conflict_backtrack_level)) {
+    assert(conflict_backtrack_level < mcsat->trail->decision_level);
+    if (trace_enabled(trace, "mcsat::conflict")) {
+      mcsat_trace_printf(trace, "%s backtracks to level %u\n", mcsat->plugins[plugin_i].plugin_name, conflict_backtrack_level);
+    }
+    mcsat_backtrack_to(mcsat, conflict_backtrack_level, false);
+    // Register the queued terms, as mcsat_add_lemma would
+    mcsat_process_registration_queue(mcsat);
+    return;
+  }
+
   // Get the conflict reasons
   ivector_t reason;
   init_ivector(&reason, 0);
@@ -2552,7 +2569,12 @@ void mcsat_analyze_conflicts(mcsat_solver_t* mcsat, uint32_t* restart_resource) 
     // We have reached the decision level of the conflict. Backtrack once more to undo the top
     // conflict variable assignment and make it undefined. When learning the lemma, we will further
     // backtrack in case of NCB.
+    // TODO: check that the backtracked decision is the top variable of the conflict
+    // TODO: check that, in case we're backtracking a constraint decision here, the constraint does not evaluate by its variables that are left on the trail.
     mcsat_backtrack_to(mcsat, mcsat->trail->decision_level - 1, true);
+    // TODO: check that the top variable (boolean constraint or theory variable) evaluates to an undefined value
+
+    // TODO in CB: can it be that a boolean constraint gets unassigned where one of its variables should get unassigned instead? Or the other way around?
 
     // Get the literals
     ivector_t* conflict_disjuncts = conflict_get_literals(&conflict);

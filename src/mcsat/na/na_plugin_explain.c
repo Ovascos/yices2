@@ -1181,6 +1181,7 @@ void na_plugin_explain_conflict(na_plugin_t* na, const int_mset_t* pos, const in
   }
 
   // Check if there is a simple Fourier-Motzkin explanation
+  // TODO (later) check if Fourier-Motzkin helps with CB?
   if (false && core->size == 2 && lemma_reasons->size == 0) {
     variable_t c0_var = core->data[0];
     variable_t c1_var = core->data[1];

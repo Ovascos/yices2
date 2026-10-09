@@ -26,6 +26,7 @@ extern void init_mcsat_options(mcsat_options_t *opts) {
   opts->na_bound = false;
   opts->na_bound_min = -1;
   opts->na_bound_max = -1;
+  opts->na_late_pop = false;
   opts->bv_var_size = -1;
   opts->model_interpolation = false;
   opts->partial_restart = false;

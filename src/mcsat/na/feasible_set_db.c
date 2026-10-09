@@ -580,7 +580,7 @@ void feasible_set_db_get_conflict_reasons(const feasible_set_db_t* db, variable_
       variable_t reason = element->reasons[0];
       assert(variable_db_is_boolean(db->plugin->ctx->var_db, reason));
       ivector_push(reasons_out, reason);
-    } else {
+    } else if (lemma_reasons) {
       for (uint32_t j = 0; j < element->reasons_size; ++j) {
         variable_t reason = element->reasons[j];
         assert(variable_db_is_boolean(db->plugin->ctx->var_db, reason));

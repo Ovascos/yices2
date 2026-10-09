@@ -84,6 +84,7 @@ struct na_plugin_s {
     statistic_int_t* evaluations;
     statistic_int_t* constraint_regular;
     statistic_int_t* constraint_root;
+    statistic_int_t* late_pops;
     statistic_avg_t* value_cache_usage;
     statistic_avg_t* value_cache_feasibility;
   } stats;

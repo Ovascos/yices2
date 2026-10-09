@@ -44,6 +44,7 @@ typedef struct {
   bool na_bound;
   int32_t na_bound_min;
   int32_t na_bound_max;
+  bool na_late_pop;
   int32_t bv_var_size;
   bool model_interpolation;
   bool partial_restart;

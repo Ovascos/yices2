@@ -272,6 +272,16 @@ struct plugin_s {
   void (*get_conflict) (plugin_t* plugin, ivector_t* conflict);
 
   /**
+   * Optional: resolve the reported conflict by backtracking instead of explaining
+   * it. Called before get_conflict, with min_level below the current decision
+   * level. If the plugin returns true, level is at least min_level and below the
+   * current decision level, and the solver backtracks to it without calling
+   * get_conflict or learning a lemma. The plugin must ensure that it cannot keep
+   * resolving conflicts this way forever.
+   */
+  bool (*get_conflict_backtrack_level) (plugin_t* plugin, uint32_t min_level, uint32_t* level);
+
+  /**
    * Explain a propagation x -> v made by the plugin. The plugin should return
    * a substitution t such that
    *
@@ -352,6 +362,7 @@ void plugin_construct(plugin_t* plugin) {
   plugin->decide                    = NULL;
   plugin->learn                     = NULL;
   plugin->get_conflict              = NULL;
+  plugin->get_conflict_backtrack_level = NULL;
   plugin->explain_propagation       = NULL;
   plugin->explain_evaluation        = NULL;
   plugin->simplify_conflict_literal = NULL;

@@ -68,6 +68,7 @@ void na_plugin_stats_init(na_plugin_t* na) {
   na->stats.evaluations = statistics_new_int(na->ctx->stats, "mcsat::na::evaluations");
   na->stats.constraint_regular = statistics_new_int(na->ctx->stats, "mcsat::na::constraints_regular");
   na->stats.constraint_root = statistics_new_int(na->ctx->stats, "mcsat::na::constraints_root");
+  na->stats.late_pops = statistics_new_int(na->ctx->stats, "mcsat::na::late_pops");
   na->stats.value_cache_usage = statistics_new_avg(na->ctx->stats, "mcsat::nra::value_cache_usage");
   na->stats.value_cache_feasibility = statistics_new_avg(na->ctx->stats, "mcsat::nra::value_cache_feasibility");
 }
@@ -1717,6 +1718,168 @@ void na_plugin_get_assumption_conflict(na_plugin_t* na, variable_t x, ivector_t*
 
 
 static
+bool na_plugin_level_lt(void* levels, int32_t i, int32_t j) {
+  return ((const int32_t*) levels)[i] < ((const int32_t*) levels)[j];
+}
+
+/**
+ * Get the lowest level at which the constraints unit in x leave x infeasible (without an
+ * integer value if need_int). A constraint is unit in x from the highest level of its value
+ * and its other variables, so x is feasible at every level below the returned one. Returns
+ * false if x is feasible under all the constraints unit in it.
+ */
+static
+bool na_plugin_get_infeasible_level(na_plugin_t* na, variable_t x, bool need_int, uint32_t* infeasible_level) {
+  const mcsat_trail_t* trail = na->ctx->trail;
+
+  // The constraints unit in x, and the levels they are unit from
+  ivector_t constraints, levels;
+  init_ivector(&constraints, 0);
+  init_ivector(&levels, 0);
+  remove_iterator_t it;
+  remove_iterator_construct(&it, &na->wlm, x);
+  for (; !remove_iterator_done(&it); remove_iterator_next_and_keep(&it)) {
+    const variable_t constraint_var = remove_iterator_get_constraint(&it);
+    if (!poly_constraint_is_valid(poly_constraint_db_get(na->constraint_db, constraint_var))) {
+      continue;
+    }
+
+    // An evaluation constraint has no value: its level is that of its variables, which
+    // include its own term variable
+    uint32_t level = 0;
+    if (variable_db_is_boolean(na->ctx->var_db, constraint_var)) {
+      if (!trail_has_value(trail, constraint_var)) {
+        continue;
+      }
+      level = trail_get_level(trail, constraint_var);
+    }
+
+    bool unit = true;
+    for (const variable_t* var_i = remove_iterator_get_list(&it); *var_i != variable_null; ++ var_i) {
+      if (*var_i == x) {
+        continue;
+      }
+      if (!na_plugin_has_assignment(na, *var_i)) {
+        unit = false;
+        break;
+      }
+      const uint32_t var_level = trail_get_level(trail, *var_i);
+      if (var_level > level) {
+        level = var_level;
+      }
+    }
+    if (unit) {
+      ivector_push(&constraints, constraint_var);
+      ivector_push(&levels, level);
+    }
+  }
+  remove_iterator_destruct(&it);
+
+  // Sort the constraints by level
+  ivector_t order;
+  init_ivector(&order, constraints.size);
+  for (uint32_t i = 0; i < constraints.size; ++ i) {
+    ivector_push(&order, i);
+  }
+  int_array_sort2(order.data, order.size, levels.data, na_plugin_level_lt);
+
+  // Add the constraints by increasing level until x is infeasible
+  bool infeasible = false;
+  lp_feasibility_set_t* feasible = lp_feasibility_set_new_full();
+  for (uint32_t k = 0; !infeasible && k < order.size; ++ k) {
+    const variable_t constraint_var = constraints.data[order.data[k]];
+    const bool is_negated = variable_db_is_boolean(na->ctx->var_db, constraint_var) &&
+        !trail_get_value(trail, constraint_var)->b;
+    lp_feasibility_set_t* constraint_feasible = na_plugin_get_feasible_set(na, constraint_var, x, is_negated);
+    lp_feasibility_set_t* intersection = lp_feasibility_set_intersect(feasible, constraint_feasible);
+    lp_feasibility_set_swap(intersection, feasible);
+    lp_feasibility_set_delete(intersection);
+    lp_feasibility_set_delete(constraint_feasible);
+
+    infeasible = need_int ? !lp_feasibility_set_contains_int(feasible) : lp_feasibility_set_is_empty(feasible);
+    if (infeasible) {
+      *infeasible_level = levels.data[order.data[k]];
+    }
+  }
+  lp_feasibility_set_delete(feasible);
+
+  delete_ivector(&constraints);
+  delete_ivector(&levels);
+  delete_ivector(&order);
+  return infeasible;
+}
+
+/**
+ * Late pop (option na_late_pop): resolve a real or integer conflict on x by backtracking.
+ *
+ * In CB, a clause can propagate a constraint c of the conflict core at a level below a
+ * variable y of c that was assigned before c. Popping to level(y) - 1 undoes such a late y
+ * but keeps c, which can leave x feasible again without a lemma. We take the highest such
+ * level at which x is feasible. Afterwards c precedes any new value of y on the trail, so
+ * (y, c) cannot be late again while c stays assigned.
+ */
+static
+bool na_plugin_get_conflict_backtrack_level(plugin_t* plugin, uint32_t min_level, uint32_t* level) {
+  na_plugin_t* na = (na_plugin_t*) plugin;
+  const mcsat_trail_t* trail = na->ctx->trail;
+
+  variable_t x = na->conflict_variable;
+  bool need_int = false;
+  if (x == variable_null) {
+    x = na->conflict_variable_int;
+    if (x == variable_null) {
+      return false;
+    }
+    assert(variable_db_is_int(na->ctx->var_db, x));
+    need_int = true;
+  }
+  assert(!na_plugin_has_assignment(na, x));
+
+  // Levels of the late variables: y of a core constraint c, above c's level and before c
+  ivector_t core, late_levels;
+  init_ivector(&core, 0);
+  init_ivector(&late_levels, 0);
+  feasible_set_db_get_conflict_reasons(na->feasible_set_db, x, NULL, &core, NULL);
+  for (uint32_t i = 0; i < core.size; ++ i) {
+    const variable_t c = core.data[i];
+    assert(trail_has_value(trail, c));
+    assert(watch_list_manager_has_constraint(&na->wlm, c));
+    const uint32_t c_level = trail_get_level(trail, c);
+    const uint32_t c_index = trail_get_index(trail, c);
+    const variable_t* y = watch_list_manager_get_list(&na->wlm, watch_list_manager_get_list_of(&na->wlm, c));
+    for (; *y != variable_null; ++ y) {
+      if (*y != x && trail_has_value(trail, *y)
+          && trail_get_level(trail, *y) > c_level
+          && trail_get_index(trail, *y) < c_index) {
+        ivector_push(&late_levels, trail_get_level(trail, *y));
+      }
+    }
+  }
+  delete_ivector(&core);
+
+  // Popping below a late level keeps x feasible if that level is at most the infeasible level
+  // of the constraints unit in x. If they never make x infeasible, they don't explain the conflict.
+  uint32_t top_late_level = 0;
+  uint32_t infeasible_level;
+  if (late_levels.size > 0 && na_plugin_get_infeasible_level(na, x, need_int, &infeasible_level)) {
+    for (uint32_t i = 0; i < late_levels.size; ++ i) {
+      const uint32_t late_level = late_levels.data[i];
+      if (late_level <= infeasible_level && late_level > top_late_level) {
+        top_late_level = late_level;
+      }
+    }
+  }
+  delete_ivector(&late_levels);
+
+  if (top_late_level <= min_level) {
+    return false;
+  }
+  *level = top_late_level - 1;
+  (*na->stats.late_pops) ++;
+  return true;
+}
+
+static
 void na_plugin_get_conflict(plugin_t* plugin, ivector_t* conflict) {
   na_plugin_t* na = (na_plugin_t*) plugin;
 
@@ -1738,6 +1901,8 @@ void na_plugin_get_conflict(plugin_t* plugin, ivector_t* conflict) {
 
   int_mset_destruct(&pos);
   int_mset_destruct(&neg);
+
+  // TODO Q1: the conflict_variable can be part of a constraint in the conflict, right?
 
   if (ctx_trace_enabled(na->ctx, "na::conflict")) {
     uint32_t i;
@@ -2191,6 +2356,7 @@ plugin_t* na_plugin_allocator(void) {
   plugin->plugin_interface.decide_assignment   = na_plugin_decide_assignment;
   plugin->plugin_interface.learn               = na_plugin_learn;
   plugin->plugin_interface.get_conflict        = na_plugin_get_conflict;
+  plugin->plugin_interface.get_conflict_backtrack_level = na_plugin_get_conflict_backtrack_level;
   plugin->plugin_interface.explain_propagation = na_plugin_explain_propagation;
   plugin->plugin_interface.explain_evaluation  = na_plugin_explain_evaluation;
   plugin->plugin_interface.simplify_conflict_literal = na_plugin_simplify_conflict_literal;
