@@ -5553,6 +5553,10 @@ static bool yices_get_option(smt2_globals_t *g, yices_param_t p) {
     print_int32_value(g->mcsat_options.na_bound_min);
     break;
 
+  case PARAM_MCSAT_NA_LATE_POP:
+    print_boolean_value(g->mcsat_options.na_late_pop);
+    break;
+
   case PARAM_MCSAT_NA_MGCD:
     print_boolean_value(g->mcsat_options.na_mgcd);
     break;
@@ -6315,6 +6319,16 @@ static void yices_set_option(smt2_globals_t *g, const char *param, const param_v
       context = g->ctx;
       if (context != NULL) {
         g->ctx->mcsat_options.na_nlsat = tt;
+      }
+    }
+    break;
+
+  case PARAM_MCSAT_NA_LATE_POP:
+    if (param_val_to_bool(param, val, &tt, &reason)) {
+      g->mcsat_options.na_late_pop = tt;
+      context = g->ctx;
+      if (context != NULL) {
+        context->mcsat_options.na_late_pop = tt;
       }
     }
     break;
