@@ -1874,6 +1874,21 @@ bool mcsat_decide_one_of(mcsat_solver_t* mcsat, ivector_t* literals, term_t boun
   }
 }
 
+#ifndef NDEBUG
+/** Whether the subterms of the literal's atom evaluate it to false */
+static
+bool mcsat_literal_evaluates_false(mcsat_solver_t* mcsat, term_t literal) {
+  const term_t atom = unsigned_term(literal);
+  const mcsat_value_t* value = literal == atom ? &mcsat_value_false : &mcsat_value_true;
+  const mcsat_evaluator_interface_t* evaluator = mcsat_evaluator_get(mcsat);
+  int_mset_t vars;
+  int_mset_construct(&vars, variable_null);
+  const bool evaluates = evaluator->evaluates(evaluator, atom, &vars, value);
+  int_mset_destruct(&vars);
+  return evaluates;
+}
+#endif
+
 /**
  * Add a lemma (a disjunction). Each lemma needs to lead to some progress. This
  * means that:
@@ -1903,6 +1918,11 @@ void mcsat_add_lemma(mcsat_solver_t* mcsat, ivector_t* lemma, term_t decision_bo
 
   init_ivector(&unassigned, 0);
 
+  const bool cb = mcsat->ctx->mcsat_options.backtrack == MCSAT_BACKTRACK_CB;
+  // A literal true by its atom but false by evaluation, both below the backjump: a second
+  // conflict that the backjump did not undo
+  bool lower_conflict = false;
+
   uint32_t top_level = mcsat->trail->decision_level_base;
   for (uint32_t i = 0; i < lemma->size; ++ i) {
     // Get the variables for the disjunct
@@ -1927,10 +1947,17 @@ void mcsat_add_lemma(mcsat_solver_t* mcsat, ivector_t* lemma, term_t decision_bo
     // Process any newly registered variables
     mcsat_process_registration_queue(mcsat);
 
-    // Check if the literal has value (only negative allowed)
+    // Check if the literal has value (only negative allowed, but see lower_conflict)
     if (trail_has_value(mcsat->trail, disjunct_pos_var)) {
       assert(trail_get_value(mcsat->trail, disjunct_pos_var)->type == VALUE_BOOLEAN);
-      assert(trail_get_value(mcsat->trail, disjunct_pos_var)->b == (disjunct != disjunct_pos));
+      if (trail_get_value(mcsat->trail, disjunct_pos_var)->b == (disjunct == disjunct_pos)) {
+        // Only CB places an atom below the level of the assignments that evaluate it. The lemma
+        // stays valid, and the theory reports the remaining conflict when it propagates.
+        assert(cb);
+        assert(mcsat_literal_evaluates_false(mcsat, disjunct));
+        lower_conflict = true;
+        continue;
+      }
       const uint32_t level = trail_get_level(mcsat->trail, disjunct_pos_var);
       if (level > top_level) {
         top_level = level;
@@ -1944,7 +1971,6 @@ void mcsat_add_lemma(mcsat_solver_t* mcsat, ivector_t* lemma, term_t decision_bo
   assert(top_level <= mcsat->trail->decision_level);
 
   const bool uip = unassigned.size == 1;
-  const bool cb = mcsat->ctx->mcsat_options.backtrack == MCSAT_BACKTRACK_CB;
   // Backtrack to the appropriate level and do some progress
   if (uip) {
     // UIP: the lemma (L1, L2, ...) has only L1 unassigned and L2 the highest assigned literal.
@@ -1979,6 +2005,8 @@ void mcsat_add_lemma(mcsat_solver_t* mcsat, ivector_t* lemma, term_t decision_bo
   // assigned. If not, we assign arbitrary.
   bool decided = false;
   const bool consistent = mcsat_is_consistent(mcsat);
+  assert(!lower_conflict || !consistent);
+  (void) lower_conflict;
   if (consistent) {
     decided = mcsat_decide_one_of(mcsat, &unassigned, decision_bound);
   }
@@ -2341,21 +2369,6 @@ term_t mcsat_top_literal_true_by_atom(const mcsat_solver_t* mcsat, const conflic
   }
   return trail_get_boolean_value(mcsat->trail, atom_var) == (literal == atom) ? literal : NULL_TERM;
 }
-
-#ifndef NDEBUG
-/** Whether the subterms of the literal's atom evaluate it to false */
-static
-bool mcsat_literal_evaluates_false(mcsat_solver_t* mcsat, term_t literal) {
-  const term_t atom = unsigned_term(literal);
-  const mcsat_value_t* value = literal == atom ? &mcsat_value_false : &mcsat_value_true;
-  const mcsat_evaluator_interface_t* evaluator = mcsat_evaluator_get(mcsat);
-  int_mset_t vars;
-  int_mset_construct(&vars, variable_null);
-  const bool evaluates = evaluator->evaluates(evaluator, atom, &vars, value);
-  int_mset_destruct(&vars);
-  return evaluates;
-}
-#endif
 
 /**
  * Given a conflict, we backtrack until exactly one top variable is found by the conflict. We
