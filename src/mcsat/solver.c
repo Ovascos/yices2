@@ -2319,6 +2319,45 @@ void mcsat_assumption_conflict_calc_interpolant(mcsat_solver_t* mcsat)
 }
 
 /**
+ * The only literal of top_var if it is true by its own atom, assigned below the conflict level,
+ * NULL_TERM otherwise. The conflict takes such a literal as false by evaluation. Undoing top_var
+ * leaves the atom, so the literal stays true instead of becoming unassigned, and a lemma would
+ * not propagate it.
+ */
+static
+term_t mcsat_top_literal_true_by_atom(const mcsat_solver_t* mcsat, const conflict_t* conflict, variable_t top_var) {
+  ivector_t literals;
+  init_ivector(&literals, 1);
+  conflict_get_literals_of(conflict, top_var, &literals);
+  assert(literals.size == 1);
+  const term_t literal = literals.data[0];
+  delete_ivector(&literals);
+
+  const term_t atom = unsigned_term(literal);
+  const variable_t atom_var = variable_db_get_variable_if_exists(mcsat->var_db, atom);
+  if (atom_var == variable_null || !trail_has_value(mcsat->trail, atom_var) ||
+      trail_get_level(mcsat->trail, atom_var) >= conflict_get_level(conflict)) {
+    return NULL_TERM;
+  }
+  return trail_get_boolean_value(mcsat->trail, atom_var) == (literal == atom) ? literal : NULL_TERM;
+}
+
+#ifndef NDEBUG
+/** Whether the subterms of the literal's atom evaluate it to false */
+static
+bool mcsat_literal_evaluates_false(mcsat_solver_t* mcsat, term_t literal) {
+  const term_t atom = unsigned_term(literal);
+  const mcsat_value_t* value = literal == atom ? &mcsat_value_false : &mcsat_value_true;
+  const mcsat_evaluator_interface_t* evaluator = mcsat_evaluator_get(mcsat);
+  int_mset_t vars;
+  int_mset_construct(&vars, variable_null);
+  const bool evaluates = evaluator->evaluates(evaluator, atom, &vars, value);
+  int_mset_destruct(&vars);
+  return evaluates;
+}
+#endif
+
+/**
  * Given a conflict, we backtrack until exactly one top variable is found by the conflict. We
  * resolve until there is one top variable decision we can undo. We conclude by undoing the
  * assignment of the final top variable by performing one more backtrack.
@@ -2414,6 +2453,8 @@ void mcsat_analyze_conflicts(mcsat_solver_t* mcsat, uint32_t* restart_resource) 
   mcsat_backtrack_to(mcsat, backtrack_level, false);
 
   term_t decision_bound = NULL_TERM;
+  // Set by [backjump-repair]: the top literal, true by its atom once the decision is undone
+  term_t repair_literal = NULL_TERM;
   const bool cb = mcsat->ctx->mcsat_options.backtrack == MCSAT_BACKTRACK_CB;
 
   // Analyze while at least one variable at conflict level
@@ -2451,6 +2492,13 @@ void mcsat_analyze_conflicts(mcsat_solver_t* mcsat, uint32_t* restart_resource) 
       // [backjump-learn]
       //   - Only one conflict literal contains the top variable.
       //   * weight increases by replacing decision with propagation (M+1)
+      //   - Not if the top variable is a propagation and its literal is already true by an atom
+      //     below the conflict level: nothing would be propagated, and the same assignments
+      //     derive the top variable again. Resolve it instead.
+      // [backjump-repair]
+      //   - As backjump-learn, but the top variable is a decision whose literal is already true by
+      //     an atom below the conflict level: the atom reached the trail after the decision.
+      //   * undoing the decision is the repair, the atom now excludes its value; nothing is learned
       // [backjump-decide]
       //   - More than one conflict literal contains the top variable.
       //   - Top variable is decision t1 -> v
@@ -2471,14 +2519,27 @@ void mcsat_analyze_conflicts(mcsat_solver_t* mcsat, uint32_t* restart_resource) 
 
       // [backjump-learn]
       const uint32_t top_var_lits = conflict_get_literal_count_of(&conflict, top_var);
+      const assignment_type_t top_var_type = trail_get_assignment_type(mcsat->trail, top_var);
       if (top_var_lits == 1) {
-        (*mcsat->solver_stats.backjump_learn) ++;
+        const term_t true_literal = mcsat_top_literal_true_by_atom(mcsat, &conflict, top_var);
+        // Only CB places an atom below the level of the assignments that evaluate it
+        assert(cb || true_literal == NULL_TERM);
+        if (true_literal == NULL_TERM) {
+          (*mcsat->solver_stats.backjump_learn) ++;
+          if (trace_enabled(trace, "mcsat::conflict"))
+            mcsat_trace_printf(trace, "[backjump-learn]\n");
+          break;
+        }
+        if (top_var_type == DECISION) {
+          repair_literal = true_literal;
+          if (trace_enabled(trace, "mcsat::conflict"))
+            mcsat_trace_printf(trace, "[backjump-repair]\n");
+          break;
+        }
         if (trace_enabled(trace, "mcsat::conflict"))
-          mcsat_trace_printf(trace, "[backjump-learn]\n");
-        break;
+          mcsat_trace_printf(trace, "[backjump-learn] skipped, the literal is true by its atom\n");
       }
       // [backjump-decide]
-      const assignment_type_t top_var_type = trail_get_assignment_type(mcsat->trail, top_var);
       if (top_var_type == DECISION) {
         // assert(variable_db_get_term(mcsat->var_db, top_var) < conflict_get_max_literal_of(&conflict, top_var));
         decision_bound = variable_db_get_term(mcsat->var_db, top_var);
@@ -2577,23 +2638,28 @@ void mcsat_analyze_conflicts(mcsat_solver_t* mcsat, uint32_t* restart_resource) 
 
     // TODO in CB: can it be that a boolean constraint gets unassigned where one of its variables should get unassigned instead? Or the other way around?
 
-    // Get the literals
-    ivector_t* conflict_disjuncts = conflict_get_literals(&conflict);
+    if (repair_literal != NULL_TERM) {
+      // The undone decision was the only assignment that made the literal evaluate to false
+      assert(!mcsat_literal_evaluates_false(mcsat, repair_literal));
+    } else {
+      // Get the literals
+      ivector_t* conflict_disjuncts = conflict_get_literals(&conflict);
 
-    if (trace_enabled(trace, "mcsat::conflict")) {
-      mcsat_trace_printf(trace, "conflict_disjuncts:\n");
-      for (uint32_t i = 0; i < conflict_disjuncts->size; ++i) {
-        mcsat_trace_printf(trace, "[%u]: ", i);
-        trace_term_ln(trace, mcsat->ctx->terms, conflict_disjuncts->data[i]);
+      if (trace_enabled(trace, "mcsat::conflict")) {
+        mcsat_trace_printf(trace, "conflict_disjuncts:\n");
+        for (uint32_t i = 0; i < conflict_disjuncts->size; ++i) {
+          mcsat_trace_printf(trace, "[%u]: ", i);
+          trace_term_ln(trace, mcsat->ctx->terms, conflict_disjuncts->data[i]);
+        }
       }
+
+      // Now add the lemma
+      mcsat_add_lemma(mcsat, conflict_disjuncts, decision_bound);
+
+      // Use resources based on conflict size
+      *restart_resource += mcsat_get_lemma_weight(mcsat, conflict_disjuncts,
+          mcsat->heuristic_params.lemma_restart_weight_type);
     }
-
-    // Now add the lemma
-    mcsat_add_lemma(mcsat, conflict_disjuncts, decision_bound);
-
-    // Use resources based on conflict size
-    *restart_resource += mcsat_get_lemma_weight(mcsat, conflict_disjuncts,
-        mcsat->heuristic_params.lemma_restart_weight_type);
 
     // Bump the variables
     mcsat_bump_variables_mset(mcsat, conflict_get_variables_all(&conflict));
