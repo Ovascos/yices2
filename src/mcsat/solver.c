@@ -326,6 +326,12 @@ struct mcsat_solver_s {
     statistic_int_t* backjump_learn;
     // Backjump-decide resolutions
     statistic_int_t* backjump_decide;
+    // Backjump-repair: a decision undone without a lemma
+    statistic_int_t* backjump_repair;
+    // Backjump-learn skipped for a propagation whose literal is true by its atom
+    statistic_int_t* backjump_learn_skipped;
+    // Lemmas that leave a lower conflict for the theory to report
+    statistic_int_t* lower_conflicts;
   } solver_stats;
 
   struct {
@@ -386,6 +392,9 @@ void mcsat_stats_init(mcsat_solver_t* mcsat) {
   mcsat->solver_stats.recaches = statistics_new_int(&mcsat->stats, "mcsat::recaches");
   mcsat->solver_stats.backjump_learn = statistics_new_int(&mcsat->stats, "mcsat::backjump_learn");
   mcsat->solver_stats.backjump_decide = statistics_new_int(&mcsat->stats, "mcsat::backjump_decide");
+  mcsat->solver_stats.backjump_repair = statistics_new_int(&mcsat->stats, "mcsat::backjump_repair");
+  mcsat->solver_stats.backjump_learn_skipped = statistics_new_int(&mcsat->stats, "mcsat::backjump_learn_skipped");
+  mcsat->solver_stats.lower_conflicts = statistics_new_int(&mcsat->stats, "mcsat::lower_conflicts");
 }
 
 static
@@ -2005,7 +2014,9 @@ void mcsat_add_lemma(mcsat_solver_t* mcsat, ivector_t* lemma, term_t decision_bo
   bool decided = false;
   const bool consistent = mcsat_is_consistent(mcsat);
   assert(!lower_conflict || !consistent);
-  (void) lower_conflict;
+  if (lower_conflict) {
+    (*mcsat->solver_stats.lower_conflicts) ++;
+  }
   if (consistent) {
     decided = mcsat_decide_one_of(mcsat, &unassigned, decision_bound);
   }
@@ -2544,10 +2555,12 @@ void mcsat_analyze_conflicts(mcsat_solver_t* mcsat, uint32_t* restart_resource) 
         }
         if (top_var_type == DECISION) {
           repair_literal = true_literal;
+          (*mcsat->solver_stats.backjump_repair) ++;
           if (trace_enabled(trace, "mcsat::conflict"))
             mcsat_trace_printf(trace, "[backjump-repair]\n");
           break;
         }
+        (*mcsat->solver_stats.backjump_learn_skipped) ++;
         if (trace_enabled(trace, "mcsat::conflict"))
           mcsat_trace_printf(trace, "[backjump-learn] skipped, the literal is true by its atom\n");
       }
