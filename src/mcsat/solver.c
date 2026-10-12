@@ -41,6 +41,7 @@
 
 #include "utils/int_queues.h"
 #include "utils/int_hash_sets.h"
+#include "utils/ptr_hash_map.h"
 
 #include "mcsat/bool/bool_plugin.h"
 #include "mcsat/ite/ite_plugin.h"
@@ -258,6 +259,9 @@ struct mcsat_solver_s {
   /** The queue for variable decisions */
   var_queue_t var_queue;
 
+  /** Explanations of the propagations lowered in conflict analysis, as [substitution, reasons...] */
+  ptr_hmap_t lowered_explanations;
+
   /**
    * All pending requests. Note: gc_calls can stay set while
    * pending_requests is false — a GC is deferred until right after a full
@@ -332,6 +336,10 @@ struct mcsat_solver_s {
     statistic_int_t* backjump_learn_skipped;
     // Lemmas that leave a lower conflict for the theory to report
     statistic_int_t* lower_conflicts;
+    // Propagations lowered to the level of their explanation (relevel)
+    statistic_int_t* lowered_propagations;
+    // Explanations of lowered propagations used again
+    statistic_int_t* lowered_explanations_used;
   } solver_stats;
 
   struct {
@@ -395,6 +403,8 @@ void mcsat_stats_init(mcsat_solver_t* mcsat) {
   mcsat->solver_stats.backjump_repair = statistics_new_int(&mcsat->stats, "mcsat::backjump_repair");
   mcsat->solver_stats.backjump_learn_skipped = statistics_new_int(&mcsat->stats, "mcsat::backjump_learn_skipped");
   mcsat->solver_stats.lower_conflicts = statistics_new_int(&mcsat->stats, "mcsat::lower_conflicts");
+  mcsat->solver_stats.lowered_propagations = statistics_new_int(&mcsat->stats, "mcsat::lowered_propagations");
+  mcsat->solver_stats.lowered_explanations_used = statistics_new_int(&mcsat->stats, "mcsat::lowered_explanations_used");
 }
 
 static
@@ -1001,6 +1011,7 @@ void mcsat_construct(mcsat_solver_t* mcsat, const context_t* ctx) {
   init_ivector(&mcsat->top_decision_vars, 0);
   init_int_queue(&mcsat->hinted_decision_vars, 0);
   var_queue_construct(&mcsat->var_queue);
+  init_ptr_hmap(&mcsat->lowered_explanations, 0);
 
   mcsat->pending_requests_all.restart = false;
   mcsat->pending_requests_all.gc_calls = false;
@@ -1067,6 +1078,12 @@ void mcsat_destruct(mcsat_solver_t* mcsat) {
   delete_ivector(&mcsat->top_decision_vars);
   delete_int_queue(&mcsat->hinted_decision_vars);
   var_queue_destruct(&mcsat->var_queue);
+  for (ptr_hmap_pair_t* p = ptr_hmap_first_record(&mcsat->lowered_explanations); p != NULL;
+       p = ptr_hmap_next_record(&mcsat->lowered_explanations, p)) {
+    delete_ivector(p->val);
+    safe_free(p->val);
+  }
+  delete_ptr_hmap(&mcsat->lowered_explanations);
   delete_ivector(&mcsat->plugin_lemmas);
   delete_ivector(&mcsat->plugin_definition_lemmas);
   delete_ivector(&mcsat->plugin_definition_vars);
@@ -1129,7 +1146,19 @@ void mcsat_pop_internal(mcsat_solver_t* mcsat, uint32_t n) {
   // Re-add the variables that were unassigned
   ivector_t* unassigned = trail_get_unassigned(mcsat->trail);
   for (uint32_t i = 0; i < unassigned->size; ++ i) {
-    var_queue_insert(&mcsat->var_queue, unassigned->data[i]);
+    const variable_t x = unassigned->data[i];
+    // Lowering pops a propagation before assigning it again
+    if (trail_has_value(mcsat->trail, x)) {
+      continue;
+    }
+    var_queue_insert(&mcsat->var_queue, x);
+    // A lowered propagation that left the trail has no explanation anymore
+    ptr_hmap_pair_t* find = ptr_hmap_find(&mcsat->lowered_explanations, x);
+    if (find != NULL) {
+      delete_ivector(find->val);
+      safe_free(find->val);
+      ptr_hmap_erase(&mcsat->lowered_explanations, find);
+    }
   }
   ivector_reset(unassigned);
 
@@ -1490,6 +1519,15 @@ void mcsat_gc(mcsat_solver_t* mcsat, bool mark_and_gc_internal) {
       term_t x_type = term_type(mcsat->terms, x_term);
       term_table_set_gc_mark(mcsat->terms, index_of(x_term));
       type_table_set_gc_mark(mcsat->types, x_type);
+    }
+
+    // Mark the explanations of the lowered propagations
+    for (ptr_hmap_pair_t* p = ptr_hmap_first_record(&mcsat->lowered_explanations); p != NULL;
+         p = ptr_hmap_next_record(&mcsat->lowered_explanations, p)) {
+      const ivector_t* explanation = p->val;
+      for (i = 0; i < explanation->size; ++ i) {
+        term_table_set_gc_mark(mcsat->terms, index_of(explanation->data[i]));
+      }
     }
 
     // Mark with each plugin
@@ -2135,6 +2173,24 @@ void mcsat_simplify_literals(mcsat_solver_t* mcsat, ivector_t* literals, bool li
   }
 }
 
+/**
+ * Explain the propagation of var by plugin, ((and reasons) => var = substitution), returning the
+ * substitution. A lowered propagation keeps its explanation: below its old level, the plugin may
+ * derive it differently, or only from its own assignment.
+ */
+static
+term_t mcsat_explain_propagation(mcsat_solver_t* mcsat, plugin_t* plugin, variable_t var, ivector_t* reasons) {
+  const ptr_hmap_pair_t* lowered = ptr_hmap_find(&mcsat->lowered_explanations, var);
+  if (lowered != NULL) {
+    const ivector_t* explanation = lowered->val;
+    ivector_add(reasons, explanation->data + 1, explanation->size - 1);
+    (*mcsat->solver_stats.lowered_explanations_used) ++;
+    return explanation->data[0];
+  }
+  assert(plugin->explain_propagation);
+  return plugin->explain_propagation(plugin, var, reasons);
+}
+
 static
 term_t mcsat_analyze_final(mcsat_solver_t* mcsat, conflict_t* input_conflict) {
   tracer_t* trace = mcsat->ctx->trace;
@@ -2206,12 +2262,12 @@ term_t mcsat_analyze_final(mcsat_solver_t* mcsat, conflict_t* input_conflict) {
       term_t substitution;
       ivector_reset(&literals);
       if (plugin) {
-        assert(plugin->explain_propagation);
-        substitution = plugin->explain_propagation(plugin, var, &literals);
+        substitution = mcsat_explain_propagation(mcsat, plugin, var, &literals);
       } else {
         bool value = trail_get_boolean_value(&trail, var);
         substitution = value ? true_term : false_term;
       }
+      trail_pop_any(&trail);
       conflict_resolve(&conflict, var, substitution, &literals);
     } else {
       // Continue with resolution
@@ -2335,7 +2391,7 @@ void mcsat_assumption_conflict_calc_interpolant(mcsat_solver_t* mcsat)
 
     const uint32_t plugin_i = mcsat->plugin_in_conflict->ctx.plugin_id;
     plugin_t* plugin = mcsat->plugins[plugin_i].plugin;
-    const term_t t = plugin->explain_propagation(plugin, mcsat->variable_in_conflict, &reason);
+    const term_t t = mcsat_explain_propagation(mcsat, plugin, mcsat->variable_in_conflict, &reason);
     const term_t x = variable_db_get_term(mcsat->var_db, mcsat->variable_in_conflict);
     const term_t x_eq_t = mk_eq(&mcsat->tm, x, t);
     // reason => x_eq_t is valid
@@ -2378,6 +2434,31 @@ term_t mcsat_top_literal_true_by_atom(const mcsat_solver_t* mcsat, const conflic
     return NULL_TERM;
   }
   return trail_get_boolean_value(mcsat->trail, atom_var) == (literal == atom) ? literal : NULL_TERM;
+}
+
+/**
+ * Lower the propagation var, popped at the conflict level, to level instead of resolving it: it is
+ * propagated there again, with its value and plugin_i, and keeps its explanation
+ */
+static
+void mcsat_lower_propagation(mcsat_solver_t* mcsat, conflict_t* conflict, variable_t var, uint32_t plugin_i,
+    const mcsat_value_t* value, uint32_t level, term_t substitution, const ivector_t* reasons) {
+  ptr_hmap_pair_t* find = ptr_hmap_get(&mcsat->lowered_explanations, var);
+  // If lowered before, the explanation came from the kept one
+  if (find->val == NULL) {
+    ivector_t* explanation = (ivector_t*) safe_malloc(sizeof(ivector_t));
+    init_ivector(explanation, reasons->size + 1);
+    ivector_push(explanation, substitution);
+    ivector_add(explanation, reasons->data, reasons->size);
+    find->val = explanation;
+  }
+
+  // Below the decision level, it leaves the trail again as the other propagations there do: with
+  // its value, until the next pop
+  trail_add_propagation(mcsat->trail, var, value, plugin_i, level);
+  trail_pop_propagation(mcsat->trail);
+  conflict_lower_propagation(conflict, var);
+  (*mcsat->solver_stats.lowered_propagations) ++;
 }
 
 /**
@@ -2479,6 +2560,7 @@ void mcsat_analyze_conflicts(mcsat_solver_t* mcsat, uint32_t* restart_resource) 
   // Set by [backjump-repair]: the top literal, true by its atom once the decision is undone
   term_t repair_literal = NULL_TERM;
   const bool cb = mcsat->ctx->mcsat_options.backtrack == MCSAT_BACKTRACK_CB;
+  const bool relevel = cb && mcsat->ctx->mcsat_options.relevel;
 
   // Analyze while at least one variable at conflict level
   while (true) {
@@ -2608,8 +2690,7 @@ void mcsat_analyze_conflicts(mcsat_solver_t* mcsat, uint32_t* restart_resource) 
 
       // Resolve the variable
       ivector_reset(&reason);
-      assert(plugin->explain_propagation);
-      const term_t substitution = plugin->explain_propagation(plugin, var, &reason);
+      const term_t substitution = mcsat_explain_propagation(mcsat, plugin, var, &reason);
       if (trace_enabled(trace, "mcsat::propagation::check")) {
         if (plugin_i != mcsat->bool_plugin_id) {
           term_t var_term = variable_db_get_term(mcsat->var_db, var);
@@ -2618,8 +2699,36 @@ void mcsat_analyze_conflicts(mcsat_solver_t* mcsat, uint32_t* restart_resource) 
           mcsat_trace_printf(trace,"skipping propagation (bool)\n");
         }
       }
-      conflict_resolve(&conflict, var, substitution, &reason);
-      // The trail pops with the resolution step
+      // Pop var: the conflict keeps the variables its disjuncts were added with. With relevel, var
+      // keeps its value, to be propagated again if lowered.
+      const uint32_t var_level = trail_get_level(mcsat->trail, var);
+      mcsat_value_t var_value;
+      mcsat_value_construct_default(&var_value);
+      if (relevel) {
+        mcsat_value_assign(&var_value, trail_get_value(mcsat->trail, var));
+      }
+      trail_pop_propagation(mcsat->trail);
+
+      // With relevel, the level at which the explanation implies the propagation
+      uint32_t explanation_level = var_level;
+      if (relevel) {
+        assert(!trail_has_value(mcsat->trail, var));
+        const bool var_bool_value = var_value.type == VALUE_BOOLEAN && var_value.b;
+        explanation_level = conflict_explanation_level(&conflict, substitution, &reason, var_bool_value);
+        if (trace_enabled(trace, "mcsat::conflict")) {
+          mcsat_trace_printf(trace,
+                             "explanation level %"PRIu32", propagated at level %"PRIu32"\n",
+                             explanation_level, var_level);
+        }
+        assert(explanation_level <= var_level);
+      }
+
+      if (explanation_level < var_level) {
+        mcsat_lower_propagation(mcsat, &conflict, var, plugin_i, &var_value, explanation_level, substitution, &reason);
+      } else {
+        conflict_resolve(&conflict, var, substitution, &reason);
+      }
+      mcsat_value_destruct(&var_value);
     } else {
       // Have to pop the trail manually
       trail_pop_propagation(mcsat->trail);
