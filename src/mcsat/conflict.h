@@ -94,6 +94,15 @@ typedef struct conflict_s {
   /** Set of current disjuncts */
   int_mset_t disjuncts;
 
+  /** Map from the current disjuncts to the start of their variables in disjunct_vars */
+  int_hmap_t disjunct_vars_map;
+
+  /**
+   * Lists of variables computed during the conflict, each ended by variable_null, among them those
+   * of the current disjuncts when they were added
+   */
+  ivector_t disjunct_vars;
+
   /** Level of the conflict */
   uint32_t level;
 
@@ -155,8 +164,24 @@ variable_t conflict_get_top_level_var(conflict_t* conflict);
 /** Recompute level information */
 void conflict_recompute_level_info(conflict_t* conflict);
 
-/** Resolve the given variable by using ((and reasons) => var = substitution). Pops var off the trail. */
+/**
+ * Resolve the given variable by using ((and reasons) => var = substitution). The caller pops var off
+ * the trail first.
+ */
 void conflict_resolve(conflict_t* conflict, variable_t var, term_t substitution, const ivector_t* reasons);
+
+/**
+ * The level at which the explanation (reasons => var = substitution) of a propagation var, popped
+ * off the trail, implies it: the highest level of the reasons and of the variables that give the
+ * substitution its value, as the conflict sees them. Value is the one var had if it is Boolean.
+ */
+uint32_t conflict_explanation_level(conflict_t* conflict, term_t substitution, const ivector_t* reasons, bool value);
+
+/**
+ * Keep the propagation var, popped at the conflict level, in the conflict instead of resolving it.
+ * The caller assigns it again at a level below first.
+ */
+void conflict_lower_propagation(conflict_t* conflict, variable_t var);
 
 /** Get all the variables responsible for the conflict (internal reference) */
 ivector_t* conflict_get_variables(conflict_t* conflict);

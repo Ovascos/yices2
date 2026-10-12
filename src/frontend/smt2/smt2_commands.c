@@ -5577,6 +5577,10 @@ static bool yices_get_option(smt2_globals_t *g, yices_param_t p) {
     print_int32_value(g->parameters.random_seed);
     break;
 
+  case PARAM_MCSAT_RELEVEL:
+    print_boolean_value(g->mcsat_options.relevel);
+    break;
+
   case PARAM_MCSAT_SUPPLEMENT_CHECK:
     print_string_value(g->parameters.mcsat_supplement_check == MCSAT_SUPPLEMENT_CHECK_BOTH ?
                        "both" : "final-only");
@@ -6329,6 +6333,16 @@ static void yices_set_option(smt2_globals_t *g, const char *param, const param_v
       context = g->ctx;
       if (context != NULL) {
         context->mcsat_options.na_late_pop = tt;
+      }
+    }
+    break;
+
+  case PARAM_MCSAT_RELEVEL:
+    if (param_val_to_bool(param, val, &tt, &reason)) {
+      g->mcsat_options.relevel = tt;
+      context = g->ctx;
+      if (context != NULL) {
+        context->mcsat_options.relevel = tt;
       }
     }
     break;

@@ -124,6 +124,7 @@ static int32_t mcsat_bv_var_size;
 static bool mcsat_partial_restart;
 static bool mcsat_check_model;
 static int32_t mcsat_backtrack;
+static bool mcsat_relevel;
 
 static pvector_t trace_tags;
 
@@ -186,6 +187,7 @@ typedef enum optid {
   mcsat_bv_var_size_opt,   // set size of bitvector variables
   mcsat_partial_restart_opt, // enable partial restart heuristic in MCSAT
   mcsat_backtrack_opt,     // set the backtracking mode
+  mcsat_relevel_opt,       // lower propagations to the level of their explanation (CB)
   trace_opt,               // enable a trace tag
   mcsat_check_model_opt,   // check models in MCSAT
   show_ef_help_opt,        // print help about the ef options
@@ -244,6 +246,7 @@ static option_desc_t options[NUM_OPTIONS] = {
   { "mcsat-bv-var-size", '\0', MANDATORY_INT, mcsat_bv_var_size_opt },
   { "mcsat-partial-restart", '\0', FLAG_OPTION, mcsat_partial_restart_opt },
   { "mcsat-backtrack", '\0', MANDATORY_STRING, mcsat_backtrack_opt },
+  { "mcsat-relevel", '\0', FLAG_OPTION, mcsat_relevel_opt },
   { "mcsat-check-model", '\0', FLAG_OPTION, mcsat_check_model_opt },
   { "trace", 't', MANDATORY_STRING, trace_opt },
   { "ef-help", '0', FLAG_OPTION, show_ef_help_opt },
@@ -332,6 +335,7 @@ static void print_mcsat_help(const char *progname) {
          "    --mcsat-bv-var-size=<B>   Set size of bit-vector variables in MCSAT search\n"
          "    --mcsat-partial-restart   Enable partial restart heuristic in MCSAT search\n"
          "    --mcsat-backtrack=<M>     Set the backtracking mode (can be ncb, cb) (default: ncb)\n"
+         "    --mcsat-relevel           Lower propagations to the level of their explanation in conflict analysis (with --mcsat-backtrack=cb)\n"
          "    --mcsat-check-model       Check each model in MCSAT search\n");
   fflush(stdout);
 }
@@ -439,6 +443,7 @@ static void parse_command_line(int argc, char *argv[]) {
   mcsat_bv_var_size = -1;
   mcsat_partial_restart = false;
   mcsat_backtrack = -1;
+  mcsat_relevel = false;
   mcsat_check_model = false;
 
   init_pvector(&trace_tags, 5);
@@ -664,6 +669,11 @@ static void parse_command_line(int argc, char *argv[]) {
           fprintf(stderr, "%s: unsupported mcsat backtracking mode: %s\n", parser.command_name, elem.s_value);
           goto bad_usage;
         }
+        break;
+
+      case mcsat_relevel_opt:
+        if (! yices_has_mcsat()) goto no_mcsat;
+        mcsat_relevel = true;
         break;
 
       case mcsat_check_model_opt:
@@ -922,6 +932,10 @@ static void setup_options_mcsat(void) {
     aval_backtrack = attr_vtbl_symbol(__smt2_globals.avtbl,
                                       mcsatbacktrack2string[mcsat_backtrack]);
     smt2_set_option(":yices-mcsat-backtrack", aval_backtrack);
+  }
+
+  if (mcsat_relevel) {
+    smt2_set_option(":yices-mcsat-relevel", aval_true);
   }
 
   if (mcsat_check_model) {
