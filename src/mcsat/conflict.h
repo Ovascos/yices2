@@ -172,10 +172,10 @@ void conflict_resolve(conflict_t* conflict, variable_t var, term_t substitution,
 
 /**
  * The level at which the explanation (reasons => var = substitution) of a propagation var, popped
- * off the trail, implies it: the highest level of the reasons and of the variables that give the
- * substitution its value, as the conflict sees them. Value is the one var had if it is Boolean.
+ * off the trail, implies it: the highest level of the reasons, as the conflict sees them, and of
+ * the assigned variables in the substitution.
  */
-uint32_t conflict_explanation_level(conflict_t* conflict, term_t substitution, const ivector_t* reasons, bool value);
+uint32_t conflict_explanation_level(conflict_t* conflict, term_t substitution, const ivector_t* reasons);
 
 /**
  * Keep the propagation var, popped at the conflict level, in the conflict instead of resolving it.

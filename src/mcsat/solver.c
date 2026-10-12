@@ -2723,8 +2723,7 @@ void mcsat_analyze_conflicts(mcsat_solver_t* mcsat, uint32_t* restart_resource) 
       uint32_t explanation_level = var_level;
       if (relevel) {
         assert(!trail_has_value(mcsat->trail, var));
-        const bool var_bool_value = var_value.type == VALUE_BOOLEAN && var_value.b;
-        explanation_level = conflict_explanation_level(&conflict, substitution, &reason, var_bool_value);
+        explanation_level = conflict_explanation_level(&conflict, substitution, &reason);
         if (trace_enabled(trace, "mcsat::conflict")) {
           mcsat_trace_printf(trace,
                              "explanation level %"PRIu32", propagated at level %"PRIu32"\n",

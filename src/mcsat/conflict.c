@@ -24,6 +24,7 @@
 
 #include "mcsat/conflict.h"
 #include "mcsat/utils/substitution.h"
+#include "utils/int_hash_sets.h"
 
 #include "io/term_printer.h"
 #include "terms/term_explorer.h"
@@ -550,32 +551,48 @@ uint32_t conflict_disjunct_get_level(conflict_t* conflict, term_t disjunct) {
   return level;
 }
 
-/** The highest level of the outermost assigned variables in t, the ones that give it its value */
+/**
+ * The highest level of the assigned variables anywhere in t. An evaluator can look through an
+ * assigned variable, as BV does through (bit x i) to x, so each of them counts.
+ */
 static
 uint32_t conflict_term_get_level(const conflict_t* conflict, term_t t) {
-  t = unsigned_term(t);
-  const variable_t t_var = variable_db_get_variable_if_exists(conflict->var_db, t);
-  if (t_var != variable_null && trail_has_value(conflict->trail, t_var)) {
-    return trail_get_level(conflict->trail, t_var);
-  }
-
-  const uint32_t n = term_num_children(conflict->terms, t);
-  // Only constants have their value without an assignment
-  assert(n > 0 || is_const_term(conflict->terms, t));
   uint32_t level = 0;
-  for (uint32_t i = 0; i < n; ++ i) {
-    const term_t t_i = term_ith_subterm(conflict->terms, t, i);
-    if (t_i != NULL_TERM) {
-      const uint32_t t_i_level = conflict_term_get_level(conflict, t_i);
-      if (t_i_level > level) {
-        level = t_i_level;
+
+  int_hset_t visited;
+  init_int_hset(&visited, 0);
+  ivector_t to_visit;
+  init_ivector(&to_visit, 0);
+  ivector_push(&to_visit, unsigned_term(t));
+
+  while (to_visit.size > 0) {
+    const term_t u = ivector_last(&to_visit);
+    ivector_pop(&to_visit);
+    if (!int_hset_add(&visited, u)) {
+      continue;
+    }
+    const variable_t u_var = variable_db_get_variable_if_exists(conflict->var_db, u);
+    if (u_var != variable_null && trail_has_value(conflict->trail, u_var)) {
+      const uint32_t u_level = trail_get_level(conflict->trail, u_var);
+      if (u_level > level) {
+        level = u_level;
+      }
+    }
+    const uint32_t n = term_num_children(conflict->terms, u);
+    for (uint32_t i = 0; i < n; ++ i) {
+      const term_t u_i = term_ith_subterm(conflict->terms, u, i);
+      if (u_i != NULL_TERM) {
+        ivector_push(&to_visit, unsigned_term(u_i));
       }
     }
   }
+
+  delete_ivector(&to_visit);
+  delete_int_hset(&visited);
   return level;
 }
 
-uint32_t conflict_explanation_level(conflict_t* conflict, term_t substitution, const ivector_t* reasons, bool value) {
+uint32_t conflict_explanation_level(conflict_t* conflict, term_t substitution, const ivector_t* reasons) {
   uint32_t level = conflict->trail->decision_level_base;
 
   // The reasons, as resolving var adds them
@@ -586,15 +603,9 @@ uint32_t conflict_explanation_level(conflict_t* conflict, term_t substitution, c
     }
   }
 
-  // The substitution, which gives var its value in the resolvents
-  uint32_t substitution_level = 0;
-  if (is_const_term(conflict->terms, substitution)) {
-    // Has its value at every level
-  } else if (is_boolean_term(conflict->terms, substitution)) {
-    substitution_level = conflict_disjunct_get_level(conflict, value ? opposite_term(substitution) : substitution);
-  } else {
-    substitution_level = conflict_term_get_level(conflict, substitution);
-  }
+  // The substitution, which gives var its value in the resolvents of this and later conflicts. Their
+  // evaluators may see different variables of it, so all of them must keep their values.
+  const uint32_t substitution_level = conflict_term_get_level(conflict, substitution);
   if (substitution_level > level) {
     level = substitution_level;
   }
