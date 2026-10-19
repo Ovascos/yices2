@@ -263,6 +263,9 @@ struct mcsat_solver_s {
   /** Explanations of the propagations lowered in conflict analysis, as [substitution, reasons...] */
   ptr_hmap_t lowered_explanations;
 
+  /** The lowest decision level backtracked to since the current conflict was found */
+  uint32_t conflict_min_level;
+
   /**
    * All pending requests. Note: gc_calls can stay set while
    * pending_requests is false — a GC is deferred until right after a full
@@ -341,6 +344,20 @@ struct mcsat_solver_s {
     statistic_int_t* lowered_propagations;
     // Explanations of lowered propagations used again
     statistic_int_t* lowered_explanations_used;
+    // Explanation levels computed (relevel)
+    statistic_int_t* explanation_levels;
+    // Levels by which a lowered propagation goes down (relevel)
+    statistic_avg_t* avg_lowered_levels;
+    // Conflicts found below the decision level
+    statistic_int_t* conflicts_below_decision_level;
+    // Decision levels undone by the analysis of a conflict
+    statistic_avg_t* avg_conflict_backtrack_levels;
+    // Propagations placed below the decision level
+    statistic_int_t* propagations_below_decision_level;
+    // Backtracks that undo at least one level
+    statistic_int_t* backtracks;
+    // Assignments a backtrack keeps: at or below its level, but after the start of the next one
+    statistic_avg_t* avg_backtrack_kept;
   } solver_stats;
 
   struct {
@@ -406,6 +423,13 @@ void mcsat_stats_init(mcsat_solver_t* mcsat) {
   mcsat->solver_stats.lower_conflicts = statistics_new_int(&mcsat->stats, "mcsat::lower_conflicts");
   mcsat->solver_stats.lowered_propagations = statistics_new_int(&mcsat->stats, "mcsat::lowered_propagations");
   mcsat->solver_stats.lowered_explanations_used = statistics_new_int(&mcsat->stats, "mcsat::lowered_explanations_used");
+  mcsat->solver_stats.explanation_levels = statistics_new_int(&mcsat->stats, "mcsat::explanation_levels");
+  mcsat->solver_stats.avg_lowered_levels = statistics_new_avg(&mcsat->stats, "mcsat::avg_lowered_levels");
+  mcsat->solver_stats.conflicts_below_decision_level = statistics_new_int(&mcsat->stats, "mcsat::conflicts_below_decision_level");
+  mcsat->solver_stats.avg_conflict_backtrack_levels = statistics_new_avg(&mcsat->stats, "mcsat::avg_conflict_backtrack_levels");
+  mcsat->solver_stats.propagations_below_decision_level = statistics_new_int(&mcsat->stats, "mcsat::propagations_below_decision_level");
+  mcsat->solver_stats.backtracks = statistics_new_int(&mcsat->stats, "mcsat::backtracks");
+  mcsat->solver_stats.avg_backtrack_kept = statistics_new_avg(&mcsat->stats, "mcsat::avg_backtrack_kept");
 }
 
 static
@@ -598,6 +622,9 @@ bool trail_token_add_at_level(trail_token_t* token, variable_t x, const mcsat_va
   // Check for trail level
   if (level < trail->decision_level_base) {
     level = trail->decision_level_base;
+  }
+  if (level < trail->decision_level) {
+    (*mcsat->solver_stats.propagations_below_decision_level) ++;
   }
 
   // Add the propagation
@@ -1013,6 +1040,7 @@ void mcsat_construct(mcsat_solver_t* mcsat, const context_t* ctx) {
   init_int_queue(&mcsat->hinted_decision_vars, 0);
   var_queue_construct(&mcsat->var_queue);
   init_ptr_hmap(&mcsat->lowered_explanations, 0);
+  mcsat->conflict_min_level = 0;
 
   mcsat->pending_requests_all.restart = false;
   mcsat->pending_requests_all.gc_calls = false;
@@ -1581,8 +1609,14 @@ void mcsat_backtrack_to(mcsat_solver_t* mcsat, uint32_t level, bool update_cache
       trail_print(mcsat->trail, trace_out(mcsat->ctx->trace));
     }
 
-    // Pop the trail, all levels at once
+    // Pop the trail, all levels at once. What is left after the start of level + 1 was kept.
+    const uint32_t level_end = mcsat->trail->level_sizes.data[level];
     trail_pop_to(mcsat->trail, level);
+    (*mcsat->solver_stats.backtracks) ++;
+    statistic_avg_add(mcsat->solver_stats.avg_backtrack_kept, mcsat->trail->elements.size - level_end);
+    if (level < mcsat->conflict_min_level) {
+      mcsat->conflict_min_level = level;
+    }
 
     if (trace_enabled(mcsat->ctx->trace, "mcsat::incremental")) {
       trail_print(mcsat->trail, trace_out(mcsat->ctx->trace));
@@ -2556,6 +2590,9 @@ void mcsat_analyze_conflicts(mcsat_solver_t* mcsat, uint32_t* restart_resource) 
 
   // Get the level of the conflict and backtrack to it
   uint32_t conflict_level = conflict_get_level(&conflict);
+  if (conflict_level < mcsat->trail->decision_level) {
+    (*mcsat->solver_stats.conflicts_below_decision_level) ++;
+  }
   // Backtrack max(base, assumptions, conflict)
   uint32_t backtrack_level = mcsat_compute_backtrack_level(mcsat, conflict_level);
   // Here we backtrack the initial top variable of the conflict.
@@ -2724,6 +2761,7 @@ void mcsat_analyze_conflicts(mcsat_solver_t* mcsat, uint32_t* restart_resource) 
       if (relevel) {
         assert(!trail_has_value(mcsat->trail, var));
         explanation_level = conflict_explanation_level(&conflict, substitution, &reason);
+        (*mcsat->solver_stats.explanation_levels) ++;
         if (trace_enabled(trace, "mcsat::conflict")) {
           mcsat_trace_printf(trace,
                              "explanation level %"PRIu32", propagated at level %"PRIu32"\n",
@@ -2733,6 +2771,7 @@ void mcsat_analyze_conflicts(mcsat_solver_t* mcsat, uint32_t* restart_resource) 
       }
 
       if (explanation_level < var_level) {
+        statistic_avg_add(mcsat->solver_stats.avg_lowered_levels, var_level - explanation_level);
         mcsat_lower_propagation(mcsat, &conflict, var, plugin_i, &var_value, explanation_level, substitution, &reason);
       } else {
         conflict_resolve(&conflict, var, substitution, &reason);
@@ -3483,8 +3522,14 @@ void mcsat_solve(mcsat_solver_t* mcsat, const param_t *params, model_t* mdl, uin
       break;
     }
 
-    // Analyze the conflicts
+    // Analyze the conflicts, and how far that backtracks
+    const uint32_t conflict_decision_level = mcsat->trail->decision_level;
+    mcsat->conflict_min_level = conflict_decision_level;
     mcsat_analyze_conflicts(mcsat, &restart_resource);
+    if (mcsat->status != YICES_STATUS_UNSAT) {
+      statistic_avg_add(mcsat->solver_stats.avg_conflict_backtrack_levels,
+                        conflict_decision_level - mcsat->conflict_min_level);
+    }
 
     // Analysis might have discovered base level conflict
     if (mcsat->status == YICES_STATUS_UNSAT) {
